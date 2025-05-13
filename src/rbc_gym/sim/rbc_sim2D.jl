@@ -153,7 +153,7 @@ function initialize_model(model, min_b, Lz, Δb, kick)
     # Set initial conditions
     uᵢ(x, z) = kick * randn()
     wᵢ(x, z) = kick * randn()
-    bᵢ(x, z) = min_b + (Lz - z) * Δb / 2 + kick * randn()
+    bᵢ(x, z) = clamp(min_b + (Lz - z) * Δb / 2 + kick * randn(), min_b, min_b + Δb)
 
     # Send the initial conditions to the model to initialize the variables
     set!(model, u=uᵢ, w=wᵢ, b=bᵢ)

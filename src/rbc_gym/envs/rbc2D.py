@@ -1,18 +1,30 @@
 import logging
 import os
+from enum import IntEnum
+import time
 from typing import Any, Dict, Optional, Tuple
+import matplotlib
+
 import gymnasium as gym
+import pygame
 import juliacall
+import juliapkg
 import numpy as np
 
-from rbc_gym.utils import RBCField, colormap
 
-#TODO test vecenv
-#TODO test GPU
-#TODO timing analysis
-#TODO checkpoints
+class RBCField(IntEnum):
+    T = 0
+    UX = 1
+    UY = 2
 
-class RayleighBenard2DEnv(gym.Env):
+
+def colormap(value, vmin=1, vmax=2, colormap="turbo"):
+    cmap = matplotlib.colormaps[colormap]
+    value = (value - vmin) / (vmax - vmin)
+    return cmap(value, bytes=True)[:, :, :3]
+
+
+class RayleighBenardConvection2DEnv(gym.Env):
     metadata = {
         "render_modes": ["human", "rgb_array"],
         "render_fps": 10,
@@ -22,16 +34,19 @@ class RayleighBenard2DEnv(gym.Env):
         self,
         rayleigh_number: Optional[int] = 10_000,
         episode_length: Optional[int] = 300,
-        observation_shape: Optional[tuple] = (8, 48),
+        observation_shape: Optional[list] = [8, 48],
         heater_segments: Optional[int] = 12,
-        render_mode: Optional[str] = None,
         heater_limit: Optional[float] = 0.75,
+        heater_duration: Optional[float] = 1.5,
+        use_gpu: Optional[bool] = False,
+        render_mode: Optional[str] = None,
     ) -> None:
         """
         Initialize the Rayleigh-Benard environment with the given configuration Dictionary.
         """
         super().__init__()
         self.closed = False
+        self.use_gpu = use_gpu
 
         # Environment configuration
         self.ra = rayleigh_number
@@ -39,6 +54,7 @@ class RayleighBenard2DEnv(gym.Env):
         self.observation_shape = observation_shape
         self.heater_segments = heater_segments
         self.heater_limit = heater_limit
+        self.heater_duration = heater_duration
 
         # Print environment configuration
         self.logger = logging.getLogger(__name__)
@@ -53,18 +69,18 @@ class RayleighBenard2DEnv(gym.Env):
         # Observation Space
         lows = np.stack(
             [
-                np.ones(self.observation_shape) * (-np.inf),
-                np.ones(self.observation_shape) * (-np.inf),
                 np.ones(self.observation_shape) * 1,
+                np.ones(self.observation_shape) * (-np.inf),
+                np.ones(self.observation_shape) * (-np.inf),
             ],
             dtype=np.float32,
             axis=0,
         )
         highs = np.stack(
             [
-                np.ones(self.observation_shape) * np.inf,
-                np.ones(self.observation_shape) * np.inf,
                 np.ones(self.observation_shape) * 2 + self.heater_limit,
+                np.ones(self.observation_shape) * np.inf,
+                np.ones(self.observation_shape) * np.inf,
             ],
             dtype=np.float32,
             axis=0,
@@ -81,9 +97,10 @@ class RayleighBenard2DEnv(gym.Env):
         )
 
         # Julia simulation
+        juliapkg.resolve()
         self.sim = juliacall.newmodule("RBCGymAPI")
         package_dir = os.path.dirname(os.path.abspath(__file__))
-        julia_file_path = os.path.join(package_dir, "sim", "rbc_sim2D_api.jl")
+        julia_file_path = os.path.join(package_dir, "..", "sim", "rbc_sim2D_api.jl")
         self.sim.include(julia_file_path)
 
         # Rendering
@@ -101,7 +118,15 @@ class RayleighBenard2DEnv(gym.Env):
         super().reset(seed=seed)
 
         # initialize julia simulation
-        self.sim.initialize_simulation(Ra=self.ra, use_gpu=False)  # TODO test GPU
+        self.sim.initialize_simulation(
+            Ra=self.ra,
+            sensors=self.observation_shape[::-1], # julia uses column-major order
+            heaters=self.heater_segments,
+            heater_limit=self.heater_limit,
+            dt=self.heater_duration,
+            seed=self.np_random_seed,
+            use_gpu=self.use_gpu,
+        )
 
         # Reset action
         self.last_action = self.action_space.sample() * 0
@@ -109,7 +134,8 @@ class RayleighBenard2DEnv(gym.Env):
         return self.__get_obs(), self.__get_info()
 
     def step(self, action: Any = None) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        done = False
+        terminated = False  # is always false; no terminal state
+        truncated = False
         # Simulation Step
         success = self.sim.step_simulation(np.array(action))
         if not success:
@@ -122,15 +148,21 @@ class RayleighBenard2DEnv(gym.Env):
 
         # Check for truncation
         if self.last_info["t"] >= self.episode_length:
-            done = True
+            truncated = True
 
-        return self.last_obs, self.last_reward, done, self.last_info
+        return self.last_obs, self.last_reward, terminated, truncated, self.last_info
 
     def __get_state(self) -> Any:
-        return np.array(self.sim.get_state())
+        state = np.array(self.sim.get_state(), dtype=np.float32)
+        state = state.transpose(0, 2, 1) # julia uses column-major order
+        state = np.flip(state, axis=1)
+        return state
 
     def __get_obs(self) -> Any:
-        return np.array(self.sim.get_observation())
+        obs = np.array(self.sim.get_observation(), dtype=np.float32)
+        obs = obs.transpose(0, 2, 1) # julia uses column-major order
+        obs = np.flip(obs, axis=1)
+        return obs
 
     def __get_reward(self) -> float:
         nu = self.sim.get_nusselt(state=False)
@@ -151,13 +183,6 @@ class RayleighBenard2DEnv(gym.Env):
             )
             return
 
-        try:
-            import pygame
-        except ImportError:
-            raise gym.error.DependencyNotInstalled(
-                "pygame is not installed, run `pip install gym[classic_control]`"
-            )
-
         if self.screen is None:
             pygame.init()
             if self.render_mode == "human":
@@ -173,7 +198,7 @@ class RayleighBenard2DEnv(gym.Env):
 
         # Data
         data = self.__get_state()[RBCField.T]
-        data = np.fliplr(data)
+        data = np.transpose(data)
         data = colormap(data, vmin=1, vmax=2 + self.heater_limit)
 
         if self.render_mode == "human":
@@ -197,3 +222,8 @@ class RayleighBenard2DEnv(gym.Env):
 
         else:
             raise ValueError(f"Unknown render mode: {self.render_mode}")
+
+    def close(self):
+        if self.screen is not None:
+            pygame.display.quit()
+            pygame.quit()

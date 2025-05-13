@@ -14,13 +14,13 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_limit=0.75, dt=1, seed=42, use_gpu=false)
-    # oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
-    #     stdout,
-    #     Logging.Warn;
-    #     show_info_source=true
-    # )
-    # global_logger(oceananigans_logger)
+function initialize_simulation(; Ra=10^5, sensors=[8, 48], heaters=12, heater_limit=0.75, dt=1, seed=42, use_gpu=false)
+    oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
+        stdout,
+        Logging.Warn;
+        show_info_source=true
+    )
+    global_logger(oceananigans_logger)
 
     # Setup simulation parameters
     global N = [96, 64]
@@ -33,7 +33,7 @@ function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_li
 
     Pr = 0.7
     min_b = 1
-    random_kick = 0.2
+    random_kick = 0.01
     Δt_solver = 0.03
 
     ν = sqrt(Pr / Ra)
@@ -52,7 +52,6 @@ function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_li
     # Create model
     global model = define_model(grid, ν, κ, u_bcs, b_bcs)
     initialize_model(model, min_b, L[2], Δb, random_kick)
-    # TODO from checkpoint
 
     # Setup simulation
     global simulation = Simulation(model, Δt=Δt_solver, stop_time=Δt)

@@ -1,3 +1,16 @@
-from .rbc_env import RayleighBenard2DEnv
+from gymnasium.envs.registration import register
 
-__all__ = ["RayleighBenard2DEnv"]
+register(
+    id="rbc_gym/RayleighBenardConvection2D-v0",
+    entry_point="rbc_gym.envs:RayleighBenardConvection2DEnv",
+    kwargs={
+        "rayleigh_number": 10_000,
+        "episode_length": 300,
+        "observation_shape": (8, 48),
+        "heater_segments": 12,
+        "render_mode": None,
+        "heater_limit": 0.75,
+        "heater_duration": 1.5,
+        "use_gpu": False,
+    },
+)
