@@ -8,16 +8,30 @@ source .venv/bin/activate
 ```
 
 ## Get started
+### Run plain environment
+Small example to run a 2D Rayleigh-Benard Convection simulation wrapped in a gym environment:
+```bash
+python example/run.py
+```
+### Run in parallel utilizing vectorized envs
+```bash
+python example/run_vectorized.py
+```
+### Run with wrappers
+```bash
+python example/run_wrappers.py
+```
 
 
-## TODOs
-- [ ] vectorized environments
-- [ ] GPU compatibility
+## Roadmap
+- [x] Timing analysis
+- [x] vectorized environments
+- [x] Wrappers
+
 - [ ] Checkpoints
+- [ ] GPU compatibility
 - [ ] 3D simulation
-- [ ] Timing analysis
 - [ ] Multi-Agent Environment via PettingZoo
-- [ ] Seed; does not change with no given seed -> desired behavior?
 
 ## Time efficiency
 Time comparison vs a shenfun based simulation. Averaged over 1000 iterations on an apple sillicone based system.

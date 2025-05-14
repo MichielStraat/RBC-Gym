@@ -119,7 +119,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         # initialize julia simulation
         self.sim.initialize_simulation(
             Ra=self.ra,
-            sensors=self.observation_shape[::-1], # julia uses column-major order
+            sensors=self.observation_shape[::-1],  # julia uses column-major order
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
@@ -153,13 +153,13 @@ class RayleighBenardConvection2DEnv(gym.Env):
 
     def __get_state(self) -> Any:
         state = np.array(self.sim.get_state(), dtype=np.float32)
-        state = state.transpose(0, 2, 1) # julia uses column-major order
+        state = state.transpose(0, 2, 1)  # julia uses column-major order
         state = np.flip(state, axis=1)
         return state
 
     def __get_obs(self) -> Any:
         obs = np.array(self.sim.get_observation(), dtype=np.float32)
-        obs = obs.transpose(0, 2, 1) # julia uses column-major order
+        obs = obs.transpose(0, 2, 1)  # julia uses column-major order
         obs = np.flip(obs, axis=1)
         return obs
 
@@ -190,7 +190,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
                     (self.screen_width, self.screen_height)
                 )
                 pygame.display.set_caption("Rayleigh Benard Convection")
-            else:  # mode == "rgb_array"
+            else:
                 self.screen = pygame.Surface((self.screen_width, self.screen_height))
         if self.clock is None:
             self.clock = pygame.time.Clock()

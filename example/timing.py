@@ -1,4 +1,4 @@
-import rbc_gym
+import rbc_gym  # noqa: F401
 import gymnasium as gym
 from timeit import timeit
 import time
