@@ -30,6 +30,8 @@ python example/run_wrappers.py
 
 - [ ] Checkpoints
 - [ ] GPU compatibility
+- [ ] Float32 in Sim?
+- [ ] Create Dataset from python gym
 - [ ] 3D simulation
 - [ ] Multi-Agent Environment via PettingZoo
 

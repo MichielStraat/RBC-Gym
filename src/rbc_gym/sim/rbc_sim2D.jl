@@ -6,57 +6,70 @@ using HDF5
 using CUDA
 using Plots
 using ArgParse
-
-theme(:dark)
+using ProgressMeter
 
 # script directory
 dirpath = string(@__DIR__)
 
 
 function simulate_2d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap,
-    duration, use_gpu, visualize, fps; sim_name=nothing)
+    duration, use_gpu)
 
     ν = sqrt(Pr / Ra) # c.f. line 33: https://github.com/spectralDNS/shenfun/blob/master/demo/RayleighBenard2D.py
     κ = 1 / sqrt(Pr * Ra) # c.f. line 37: https://github.com/spectralDNS/shenfun/blob/master/demo/RayleighBenard2D.py
 
     totalsteps = Int(div(duration, Δt_snap))
 
+    global domain, action, actuators, actuator_limit
+    domain = L
+    actuators = 12
+    action = zeros(actuators)
+    actuator_limit = 0.75
+
     grid = define_sample_grid(N, L, use_gpu)
     u_bcs, b_bcs = define_boundary_conditions(min_b, Δb)
+
+    # create dataset
+    model = define_model(grid, ν, κ, u_bcs, b_bcs)
+
+    path = joinpath(dir, "checkpoints/checkpoints$(Ra).h5")
+    h5_file = h5open(path, "w")
+
+    attrs(h5_file)["num_episodes"] = random_inits
+    db = create_dataset(h5_file, "b", datatype(Float64), dataspace(random_inits, size(model.tracers.b)...))
+    du = create_dataset(h5_file, "u", datatype(Float64), dataspace(random_inits, size(model.velocities.u)...))
+    dw = create_dataset(h5_file, "w", datatype(Float64), dataspace(random_inits, size(model.velocities.w)...))
 
     for i ∈ 1:random_inits
         println("Simulating random initialization $(i)/$(random_inits)...")
 
-        if (isnothing(sim_name))
-            sim_name = "x$(N[1])_z$(N[2])_Ra$(Ra)_Pr$(Pr)_t$(Δt)_snap$(Δt_snap)_dur$(duration)"
-        end
-        h5_file, dataset, h5_file_path, sim_num = create_hdf5_dataset(dir, sim_name, N, totalsteps)
-
         # Make sure that every random initialization is indeed independend of each other
         # (even when script is restarted)
-        Random.seed!(sim_num)
+        Random.seed!(42+i)
 
         model = define_model(grid, ν, κ, u_bcs, b_bcs)
         initialize_model(model, min_b, L[2], Δb, random_kick)
 
-        success = simulate_model(model, dataset, Δt, Δt_snap, totalsteps, N)
+        global simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
+        simulation.verbose = false
+
+        success = simulate_model(simulation, model, Δt, Δt_snap, totalsteps, N)
 
         if (!success)
             return
         end
 
-        if visualize
-            animation_dir = joinpath(dir, sim_name, "sim$(sim_num)", "animations")
-            mkpath(animation_dir)
-            for (channel_num, channel_name) in enumerate(["temp", "u", "w"])
-                println("Animating $(channel_name)...")
-                visualize_simulation(dataset, animation_dir, channel_num, channel_name, fps, N, L, Δt_snap, min_b, Δb)
-            end
-        end
+        db[i, :, :, :] = model.tracers.b
+        du[i, :, :, :] = model.velocities.u
+        dw[i, :, :, :] = model.velocities.w
 
-        close(h5_file)
-        println("Simulation data saved as: $(h5_file_path)")
+        # display(heatmap(model.tracers.b[1:96,1,1:64]'; xlabel="x", ylabel="z", title="Tracer b field"))
+        # sleep(20)
     end
+
+    # Save the simulation results to a file
+    close(h5_file)
+    println("Saved data to: ", h5_file)
 end
 
 
@@ -73,9 +86,8 @@ end
 
 
 function collate_actions_colin(action, x, t)
-    global L, actuator_limit
+    global domain, actuators, actuator_limit
 
-    domain = L[1]
     ampl = actuator_limit
     dx = 0.03
 
@@ -83,7 +95,7 @@ function collate_actions_colin(action, x, t)
     Mean = mean(values)
     K2 = maximum([1.0, maximum(abs.(values .- Mean)) / ampl])
 
-    segment_length = domain / actuators
+    segment_length = domain[1] / actuators
 
     # determine segment of x
     x_segment = Int(floor(x / segment_length) + 1)
@@ -159,52 +171,33 @@ function initialize_model(model, min_b, Lz, Δb, kick)
     set!(model, u=uᵢ, w=wᵢ, b=bᵢ)
 end
 
+function initialize_from_checkpoint(model, path)
+    h5_file = h5open(path, "r")
 
-function create_hdf5_dataset(dir, sim_name, N, totalsteps)
-    sim_dir = joinpath(dir, sim_name)
-    mkpath(sim_dir) # create directory if not existent
+    n = attrs(h5_file)["num_episodes"]
+    idx = rand(1:n)
 
-    # compute number of this simulation
-    sim_num = 1
-    while isfile(joinpath(sim_dir, "sim$(sim_num)", "sim.h5"))
-        sim_num += 1
-    end
+    bb = read(h5_file, "b")[idx,:,:,:]
+    uu = read(h5_file, "u")[idx,:,:,:]
+    ww = read(h5_file, "w")[idx,:,:,:]
 
-    mkpath(joinpath(sim_dir, "sim$(sim_num)"))
-    sim_path = joinpath(sim_dir, "sim$(sim_num)", "sim.h5")
-    h5_file = h5open(sim_path, "w")
-    # save temperature and velocities in one dataset:
-    dataset = create_dataset(h5_file, "data", datatype(Float64),
-        dataspace(totalsteps + 1, 3, N...), chunk=(1, 1, N...))
-
-    return h5_file, dataset, sim_path, sim_num
+    println("Loading checkpoint from file: $path at index: $idx")
+    set!(model, u = uu, w = ww, b = bb)
+    close(h5_file)
 end
 
 
-function simulate_model(model, dataset, Δt, Δt_snap, totalsteps, N)
-    simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
-    simulation.verbose = true
-
+function simulate_model(simulation, model, Δt, Δt_snap, totalsteps, N)
     cur_time = 0.0
-
-    # save initial state
-    save_simulation_step(model, dataset, 1, N)
-
-    for i in 1:totalsteps
-        #update the simulation stop time for the next step
-        global simulation.stop_time = Δt_snap * i
-
+    @showprogress 2 "Simulating..." for i in 1:totalsteps
         run!(simulation)
+        simulation.stop_time += Δt_snap
         cur_time += Δt_snap
-
-        save_simulation_step(model, dataset, i + 1, N)
 
         if (step_contains_NaNs(model, N))
             printstyled("[ERROR] NaN values found!\n"; color=:red)
             return false
         end
-
-        println(cur_time)
     end
 
     return true
@@ -228,43 +221,11 @@ function array_gradient(a)
 end
 
 
-function save_simulation_step(model, dataset, step, N)
-    dataset[step, 1, :, :] = model.tracers.b[1:N[1], 1, 1:N[2]]
-    dataset[step, 2, :, :] = model.velocities.u[1:N[1], 1, 1:N[2]]
-    dataset[step, 3, :, :] = model.velocities.w[1:N[1], 1, 1:N[2]]
-end
-
-
 function step_contains_NaNs(model, N)
     contains_nans = (any(isnan, model.tracers.b[1:N[1], 1, 1:N[2]]) ||
                      any(isnan, model.velocities.u[1:N[1], 1, 1:N[2]]) ||
                      any(isnan, model.velocities.w[1:N[1], 1, 1:N[2]]))
     return contains_nans
-end
-
-
-function visualize_simulation(data, animation_dir, channel, channel_name, fps, N, L, Δt_snap, min_b, Δb)
-    if channel == 1 # temperature channel
-        clims = (min_b, min_b + Δb)
-    else
-        clims = (minimum(data[:, channel, :, :]), maximum(data[:, channel, :, :]))
-    end
-
-    function show_snapshot(i)
-        t = round((i - 1) * Δt_snap, digits=1)
-        x = range(0, L[1], length=N[1])
-        z = range(0, L[2], length=N[2])
-        snap = transpose(data[i, channel, :, :])
-        heatmap(x, z, snap,
-            c=:jet, clims=clims, aspect_ratio=:equal, xlim=(0, L[1]), ylim=(0, L[2]),
-            title="2D Rayleigh-Bénard $(channel_name) (t=$t)")
-    end
-
-    animation_path = joinpath(animation_dir, "$(channel_name).mp4")
-    anim = @animate for i ∈ 1:size(data, 1)
-        show_snapshot(i)
-    end
-    mp4(anim, animation_path, fps=fps)
 end
 
 
@@ -332,14 +293,6 @@ function parse_arguments()
         help = "Runs the simulation on CPU when argument given."
         action = :store_false
         dest_name = "use_gpu"
-        "--no_visualization"
-        help = "No animation of the simulated data is created when argument given."
-        action = :store_false
-        dest_name = "visualize"
-        "--fps"
-        help = "The fps of the animated simulation data"
-        arg_type = Int
-        default = 15
     end
 
     return parse_args(s)
@@ -361,8 +314,5 @@ if (is_script)
         args["Δt"],
         args["Δt_snap"],
         args["duration"],
-        args["use_gpu"],
-        args["visualize"],
-        args["fps"],
-        sim_name=args["sim_name"],)
+        args["use_gpu"],)
 end

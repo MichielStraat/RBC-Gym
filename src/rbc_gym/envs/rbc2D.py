@@ -38,6 +38,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         heater_limit: Optional[float] = 0.75,
         heater_duration: Optional[float] = 1.5,
         use_gpu: Optional[bool] = False,
+        checkpoint_dir: Optional[str] = "",
         render_mode: Optional[str] = None,
     ) -> None:
         """
@@ -46,6 +47,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         super().__init__()
         self.closed = False
         self.use_gpu = use_gpu
+        self.checkpoint_dir = checkpoint_dir
 
         # Environment configuration
         self.ra = rayleigh_number
@@ -115,6 +117,10 @@ class RayleighBenardConvection2DEnv(gym.Env):
         options: Dict[str, Any] | None = None,
     ) -> Tuple[Any, Dict[str, Any]]:
         super().reset(seed=seed)
+        # Set checkpoint
+        path = None
+        if self.checkpoint_dir:
+            path = os.path.join(self.checkpoint_dir, f"checkpoints{self.ra}.h5")
 
         # initialize julia simulation
         self.sim.initialize_simulation(
@@ -124,6 +130,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
             seed=self.np_random_seed,
+            checkpoint_path=path,
             use_gpu=self.use_gpu,
         )
 

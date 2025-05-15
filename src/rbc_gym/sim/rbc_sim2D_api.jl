@@ -14,7 +14,7 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=10^5, sensors=[8, 48], heaters=12, heater_limit=0.75, dt=1, seed=42, use_gpu=false)
+function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_limit=0.75, dt=1, seed=42, checkpoint_path=nothing, use_gpu=false)
     oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
         stdout,
         Logging.Warn;
@@ -26,6 +26,7 @@ function initialize_simulation(; Ra=10^5, sensors=[8, 48], heaters=12, heater_li
     global N = [96, 64]
     global N_obs = sensors
     global L = [2 * pi, 2]
+    global domain = L
     global Δb = 1
     global actuators = heaters
     global actuator_limit = heater_limit
@@ -51,7 +52,13 @@ function initialize_simulation(; Ra=10^5, sensors=[8, 48], heaters=12, heater_li
 
     # Create model
     global model = define_model(grid, ν, κ, u_bcs, b_bcs)
-    initialize_model(model, min_b, L[2], Δb, random_kick)
+    # Initialize model
+    if isnothing(checkpoint_path)
+        initialize_model(model, min_b, L[2], Δb, random_kick)
+    else
+        initialize_from_checkpoint(model, checkpoint_path)
+    end
+    
 
     # Setup simulation
     global simulation = Simulation(model, Δt=Δt_solver, stop_time=Δt)
@@ -115,7 +122,7 @@ Get the current state of the simulation
 function get_observation()
     global N_obs, N
 
-    sensor_positions = [collect(1:Int(N[1] / N_obs[1]):N[1]), collect(1:Int(N[2] / N_obs[2]):N[2])]
+    sensor_positions = [collect(1:Int(N[1] / N_obs[1]):N[1]), collect(1:Int(N[2] / N_obs[2]):N[2])] #TODO einmal oben definieren
     state = get_state()
     return state[:, sensor_positions[1], sensor_positions[2]]
 end
