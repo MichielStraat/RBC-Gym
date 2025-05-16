@@ -32,10 +32,10 @@ python example/run_wrappers.py
 - [x] Timing analysis
 - [x] vectorized environments
 - [x] Wrappers
+- [x] Checkpoints
+- [ ] Make installable
 
-- [ ] Checkpoints
 - [ ] GPU compatibility
-- [ ] Float32 in Sim?
 - [ ] Create Dataset from python gym
 - [ ] 3D simulation
 - [ ] Multi-Agent Environment via PettingZoo
