@@ -3,7 +3,7 @@ using Logging
 using Statistics
 
 
-include("rbc_sim2D.jl")  # Include your existing simulation code
+include("rbc_sim2D.jl")
 
 # Global variables to hold simulation state
 global simulation = nothing

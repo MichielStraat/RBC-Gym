@@ -4,7 +4,6 @@ using Oceananigans
 using Statistics
 using HDF5
 using CUDA
-using Plots
 using ArgParse
 using ProgressMeter
 

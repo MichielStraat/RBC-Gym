@@ -7,6 +7,11 @@ uv sync
 source .venv/bin/activate
 ```
 
+The simulation is based on Julia. Please install according to their [docs](https://julialang.org/install/) or via their standalone installer:
+```bash
+curl -fsSL https://install.julialang.org | sh
+```
+
 ## Get started
 ### Run plain environment
 Small example to run a 2D Rayleigh-Benard Convection simulation wrapped in a gym environment:
