@@ -33,10 +33,11 @@ python example/run_wrappers.py
 - [x] vectorized environments
 - [x] Wrappers
 - [x] Checkpoints
-- [ ] Make installable
+- [x] Make installable
 
 - [ ] GPU compatibility
 - [ ] Create Dataset from python gym
+- [ ] PyTests
 - [ ] 3D simulation
 - [ ] Multi-Agent Environment via PettingZoo
 

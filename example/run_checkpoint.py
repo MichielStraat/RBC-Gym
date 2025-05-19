@@ -1,6 +1,10 @@
 import rbc_gym  # noqa: F401
+import logging
 import gymnasium as gym
 from tqdm import tqdm
+
+
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
 
 env = gym.make(
     "rbc_gym/RayleighBenardConvection2D-v0",

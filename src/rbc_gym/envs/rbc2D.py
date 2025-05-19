@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from enum import IntEnum
 from typing import Any, Dict, Optional, Tuple
 import matplotlib
@@ -120,7 +121,13 @@ class RayleighBenardConvection2DEnv(gym.Env):
         # Set checkpoint
         path = None
         if self.checkpoint_dir:
-            path = os.path.join(self.checkpoint_dir, f"checkpoints{self.ra}.h5")
+            path = Path(self.checkpoint_dir) / f"checkpoints{self.ra}.h5"
+            self.logger.info(f"Using checkpoint file {path.absolute()}")
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"Checkpoint file {path} does not exist. "
+                    "Please provide a valid checkpoint directory."
+                )
 
         # initialize julia simulation
         self.sim.initialize_simulation(
@@ -130,7 +137,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
             seed=self.np_random_seed,
-            checkpoint_path=path,
+            checkpoint_path=str(path),
             use_gpu=self.use_gpu,
         )
 
