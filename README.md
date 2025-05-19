@@ -35,6 +35,7 @@ python example/run_wrappers.py
 - [x] Checkpoints
 - [x] Make installable
 
+- [ ] Normalize Reward Wrapper
 - [ ] GPU compatibility
 - [ ] Create Dataset from python gym
 - [ ] PyTests

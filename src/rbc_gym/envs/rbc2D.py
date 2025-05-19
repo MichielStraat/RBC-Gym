@@ -189,9 +189,13 @@ class RayleighBenardConvection2DEnv(gym.Env):
 
     def __get_info(self) -> dict[str, Any]:
         t, step = self.sim.get_info()
+        nu_state = self.sim.get_nusselt(state=True)
+        nu_obs = self.sim.get_nusselt(state=False)
         return {
             "t": t,
             "step": step,
+            "nusselt_state": nu_state,
+            "nusselt_obs": nu_obs,
         }
 
     def render(self):
