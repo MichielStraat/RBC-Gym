@@ -142,6 +142,11 @@ class RayleighBenardConvection2DEnv(gym.Env):
     def step(self, action: Any = None) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
         terminated = False  # is always false; no terminal state
         truncated = False
+        # zero action if none
+        if action is None:
+            action = np.zeros(self.action_space.shape, dtype=np.float32)
+            self.logger.info("No action provided, using zero action")
+
         # Simulation Step
         success = self.sim.step_simulation(np.array(action))
         if not success:
