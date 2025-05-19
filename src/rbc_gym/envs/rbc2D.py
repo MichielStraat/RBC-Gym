@@ -1,4 +1,5 @@
 import logging
+import warnings
 import os
 from pathlib import Path
 from enum import IntEnum
@@ -152,7 +153,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         # zero action if none
         if action is None:
             action = np.zeros(self.action_space.shape, dtype=np.float32)
-            self.logger.info("No action provided, using zero action")
+            warnings.warn("No action provided, using zero action")
 
         # Simulation Step
         success = self.sim.step_simulation(np.array(action))
