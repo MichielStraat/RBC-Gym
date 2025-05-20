@@ -12,7 +12,7 @@ register(
         "render_mode": None,
         "heater_limit": 0.75,
         "heater_duration": 1.5,
-        "checkpoint_dir": "",
+        "checkpoint": None,
         "use_gpu": False,
     },
 )

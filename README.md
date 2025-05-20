@@ -41,12 +41,12 @@ env = gym.make(
 - [x] Wrappers
 - [x] Checkpoints
 - [x] Make installable
-
 - [x] Normalize Reward Wrapper
 - [x] Reward Shaping Wrapper
-- [ ] generate Checkpoints for train and test for all Ra
+- [x] generate Checkpoints for train and test for all Ra
 
 - [ ] Docs
+- [ ] Make more parameters accessible to the gym env
 - [ ] GPU compatibility
 - [ ] Create Dataset from python gym
 - [ ] PyTests

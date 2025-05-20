@@ -4,11 +4,11 @@ import gymnasium as gym
 from tqdm import tqdm
 
 
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.DEBUG)
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 env = gym.make(
     "rbc_gym/RayleighBenardConvection2D-v0",
-    checkpoint_dir="data/checkpoints/",
+    checkpoint="data/checkpoints/checkpoints10000.h5",
     render_mode="human",
 )
 

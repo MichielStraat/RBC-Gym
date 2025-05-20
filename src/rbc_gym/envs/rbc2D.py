@@ -41,7 +41,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         heater_limit: Optional[float] = 0.75,
         heater_duration: Optional[float] = 1.5,
         use_gpu: Optional[bool] = False,
-        checkpoint_dir: Optional[str] = None,
+        checkpoint: Optional[str] = None,
         render_mode: Optional[str] = None,
     ) -> None:
         """
@@ -50,7 +50,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         super().__init__()
         self.closed = False
         self.use_gpu = use_gpu
-        self.checkpoint_dir = checkpoint_dir
+        self.checkpoint = checkpoint
 
         # Environment configuration
         self.ra = rayleigh_number
@@ -123,8 +123,8 @@ class RayleighBenardConvection2DEnv(gym.Env):
         super().reset(seed=seed)
         # Set checkpoint
         path = None
-        if self.checkpoint_dir:
-            path = Path(self.checkpoint_dir) / f"checkpoints{self.ra}.h5"
+        if self.checkpoint:
+            path = Path(self.checkpoint)
             self.logger.info(f"Using checkpoint file {path.absolute()}")
             if not path.exists():
                 raise FileNotFoundError(

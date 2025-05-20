@@ -11,7 +11,7 @@ using ProgressMeter
 dirpath = string(@__DIR__)
 
 
-function simulate_2d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap,
+function simulate_2d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap,
     duration, use_gpu)
 
     ν = sqrt(Pr / Ra) # c.f. line 33: https://github.com/spectralDNS/shenfun/blob/master/demo/RayleighBenard2D.py
@@ -31,10 +31,14 @@ function simulate_2d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick
     # create dataset
     model = define_model(grid, ν, κ, u_bcs, b_bcs)
 
-    path = joinpath(dir, "checkpoints/checkpoints$(Ra).h5")
+    if !isdir(dir)
+        mkpath(dir)
+    end
+    path = joinpath(dir, "ckpt_ra$(Ra).h5")
     h5_file = h5open(path, "w")
 
     attrs(h5_file)["num_episodes"] = random_inits
+    attrs(h5_file)["start_seed"] = seed
     db = create_dataset(h5_file, "b", datatype(Float64), dataspace(random_inits, size(model.tracers.b)...))
     du = create_dataset(h5_file, "u", datatype(Float64), dataspace(random_inits, size(model.velocities.u)...))
     dw = create_dataset(h5_file, "w", datatype(Float64), dataspace(random_inits, size(model.velocities.w)...))
@@ -44,7 +48,7 @@ function simulate_2d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick
 
         # Make sure that every random initialization is indeed independend of each other
         # (even when script is restarted)
-        Random.seed!(42+i)
+        Random.seed!(seed + i)
 
         model = define_model(grid, ν, κ, u_bcs, b_bcs)
         initialize_model(model, min_b, L[2], Δb, random_kick)
@@ -239,6 +243,10 @@ function parse_arguments()
         "--dir"
         help = "The path to the directory to store the simulations in."
         default = joinpath(dirpath, "data")
+        "--seed"
+        help = "Random seed for the simulation."
+        arg_type = Int
+        default = 42
         "--random_inits"
         help = "The number of random initializations to simulate"
         arg_type = Int
@@ -302,6 +310,7 @@ if (is_script)
     args = parse_arguments()
     simulate_2d_rb(
         args["dir"],
+        args["seed"],
         args["random_inits"],
         args["Ra"],
         args["Pr"],
