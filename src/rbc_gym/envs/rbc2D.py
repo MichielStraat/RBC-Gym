@@ -36,11 +36,12 @@ class RayleighBenardConvection2DEnv(gym.Env):
         rayleigh_number: Optional[int] = 10_000,
         episode_length: Optional[int] = 300,
         observation_shape: Optional[list] = [8, 48],
+        state_shape: Optional[list] = [64, 96],
         heater_segments: Optional[int] = 12,
         heater_limit: Optional[float] = 0.75,
         heater_duration: Optional[float] = 1.5,
         use_gpu: Optional[bool] = False,
-        checkpoint_dir: Optional[str] = "",
+        checkpoint_dir: Optional[str] = None,
         render_mode: Optional[str] = None,
     ) -> None:
         """
@@ -55,6 +56,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         self.ra = rayleigh_number
         self.episode_length = episode_length
         self.observation_shape = observation_shape
+        self.state_shape = state_shape
         self.heater_segments = heater_segments
         self.heater_limit = heater_limit
         self.heater_duration = heater_duration
@@ -129,16 +131,18 @@ class RayleighBenardConvection2DEnv(gym.Env):
                     f"Checkpoint file {path} does not exist. "
                     "Please provide a valid checkpoint directory."
                 )
+            path = str(path.absolute())
 
         # initialize julia simulation
         self.sim.initialize_simulation(
             Ra=self.ra,
             sensors=self.observation_shape[::-1],  # julia uses column-major order
+            grid=self.state_shape[::-1],  # julia uses column-major order
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
             seed=self.np_random_seed,
-            checkpoint_path=str(path),
+            checkpoint_path=path,
             use_gpu=self.use_gpu,
         )
 
@@ -196,6 +200,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
             "step": step,
             "nusselt_state": nu_state,
             "nusselt_obs": nu_obs,
+            "state": self.__get_state(),
         }
 
     def render(self):

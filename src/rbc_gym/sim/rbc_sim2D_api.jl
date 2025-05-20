@@ -14,7 +14,7 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_limit=0.75, dt=1, seed=42, checkpoint_path=nothing, use_gpu=false)
+function initialize_simulation(; Ra=10^5, sensors=[48, 8], grid=[96, 64], heaters=12, heater_limit=0.75, dt=1, seed=42, checkpoint_path=nothing, use_gpu=false)
     oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
         stdout,
         Logging.Warn;
@@ -23,7 +23,7 @@ function initialize_simulation(; Ra=10^5, sensors=[48, 8], heaters=12, heater_li
     global_logger(oceananigans_logger)
 
     # Setup simulation parameters
-    global N = [96, 64]
+    global N = grid
     global N_obs = sensors
     global L = [2 * pi, 2]
     global domain = L

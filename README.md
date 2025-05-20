@@ -27,6 +27,13 @@ python example/run_vectorized.py
 python example/run_wrappers.py
 ```
 
+## Gym environment
+```python
+env = gym.make(
+        "rbc_gym/RayleighBenardConvection2D-v0",
+        render_mode="human",
+    )
+```
 
 ## Roadmap
 - [x] Timing analysis
@@ -35,7 +42,11 @@ python example/run_wrappers.py
 - [x] Checkpoints
 - [x] Make installable
 
-- [ ] Normalize Reward Wrapper
+- [x] Normalize Reward Wrapper
+- [x] Reward Shaping Wrapper
+- [ ] generate Checkpoints for train and test for all Ra
+
+- [ ] Docs
 - [ ] GPU compatibility
 - [ ] Create Dataset from python gym
 - [ ] PyTests

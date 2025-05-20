@@ -7,6 +7,7 @@ register(
         "rayleigh_number": 10_000,
         "episode_length": 300,
         "observation_shape": (8, 48),
+        "state_shape": (64, 96),
         "heater_segments": 12,
         "render_mode": None,
         "heater_limit": 0.75,
