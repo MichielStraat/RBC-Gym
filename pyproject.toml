@@ -12,7 +12,10 @@ dependencies = [
     "juliacall>=0.9.24",
     "juliapkg>=0.1.16",
     "matplotlib>=3.10.1",
+    "plotly>=6.1.2",
     "pygame>=2.6.1",
+    "pyqt5>=5.15.11",
+    "pyvista>=0.45.2",
     "scipy>=1.15.3",
     "tqdm>=4.67.1",
 ]
@@ -23,6 +26,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "imageio[ffmpeg]>=2.37.0",
     "pytest>=8.3.5",
     "ruff>=0.11.7",
 ]

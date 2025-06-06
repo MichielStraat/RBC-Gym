@@ -3,10 +3,7 @@ import Random
 using Oceananigans
 using Statistics
 using HDF5
-using Plots
 using ArgParse
-
-theme(:dark)
 
 # script directory
 dirpath = string(@__DIR__)
@@ -49,15 +46,6 @@ function simulate_3d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick
             return
         end
 
-        if visualize
-            animation_dir = joinpath(dir, "data", sim_name, "sim$(sim_num)", "animations")
-            mkpath(animation_dir)
-            for (channel_num, channel_name) in enumerate(["temp", "u", "v", "w"])
-                println("Animating $(channel_name)...")
-                visualize_simulation(dataset, animation_dir, channel_num, channel_name, fps, N, L, Δt_snap, min_b, Δb)
-            end
-        end
-
         close(h5_file)
         println("Simulation data saved as: $(h5_file_path)")
     end
@@ -81,9 +69,6 @@ function define_boundary_conditions(min_b, Δb)
         bottom=ValueBoundaryCondition(0))
     v_bcs = FieldBoundaryConditions(top=ValueBoundaryCondition(0),
         bottom=ValueBoundaryCondition(0))
-    # no explicit boundary condition for vertical velocity (seems to be inferred automatically)
-    # w_bcs = FieldBoundaryConditions(top = ValueBoundaryCondition(0),
-    #                                 bottom = ValueBoundaryCondition(0))
     b_bcs = FieldBoundaryConditions(top=ValueBoundaryCondition(min_b),
         bottom=ValueBoundaryCondition(min_b + Δb))
     return u_bcs, v_bcs, b_bcs
@@ -181,81 +166,6 @@ function step_contains_NaNs(model, N)
                      any(isnan, model.velocities.v[1:N[1], 1:N[2], 1:N[3]]) ||
                      any(isnan, model.velocities.w[1:N[1], 1:N[2], 1:N[3]]))
     return contains_nans
-end
-
-
-function visualize_simulation(data, animation_dir, channel, channel_name, fps, N, L, Δt_snap, min_b, Δb)
-    width = div(N[1], 2)
-    depth = div(N[2], 2)
-    height = div(N[3], 2)
-
-    if channel == 1 # temperature channel
-        clims_width = (min_b, min_b + Δb)
-        clims_depth = (min_b, min_b + Δb)
-        clims_height = (min_b, min_b + Δb)
-    else
-        total_min = min(minimum(data[:, channel, width, :, :]),
-            minimum(data[:, channel, :, depth, :]),
-            minimum(data[:, channel, :, :, height]))
-        total_max = max(maximum(data[:, channel, width, :, :]),
-            maximum(data[:, channel, :, depth, :]),
-            maximum(data[:, channel, :, :, height]))
-        extreme_value = max(abs(total_min), abs(total_max))
-
-        # use same color map for all animations and center limits around zero
-        clims_width = (-extreme_value, extreme_value)
-        clims_depth = (-extreme_value, extreme_value)
-        clims_height = (-extreme_value, extreme_value)
-    end
-
-    function show_snapshot_width(i)
-        t = round((i - 1) * Δt_snap, digits=1)
-        x = range(0, L[2], length=N[2])
-        z = range(0, L[3], length=N[3])
-        snap = transpose(data[i, channel, width, :, :])
-        heatmap(x, z, snap,
-            c=:jet, clims=clims_width, aspect_ratio=:equal, xlim=(0, L[2]), ylim=(0, L[3]),
-            title="Side View (w=$(width)): 3D Rayleigh-Bénard $(channel_name) (t=$t)")
-    end
-    function show_snapshot_depth(i)
-        t = round((i - 1) * Δt_snap, digits=1)
-        x = range(0, L[1], length=N[1])
-        z = range(0, L[3], length=N[3])
-        snap = transpose(data[i, channel, :, depth, :])
-        heatmap(x, z, snap,
-            c=:jet, clims=clims_depth, aspect_ratio=:equal, xlim=(0, L[1]), ylim=(0, L[3]),
-            title="Side View (d=$(depth)): 3D Rayleigh-Bénard $(channel_name) (t=$t)")
-    end
-    function show_snapshot_height(i)
-        t = round((i - 1) * Δt_snap, digits=1)
-        x = range(0, L[1], length=N[1])
-        z = range(0, L[2], length=N[2])
-        snap = transpose(data[i, channel, :, :, height])
-        heatmap(x, z, snap,
-            c=:jet, clims=clims_height, aspect_ratio=:equal, xlim=(0, L[1]), ylim=(0, L[2]),
-            title="Top View (h=$(height)): 3D Rayleigh-Bénard $(channel_name) (t=$t)")
-    end
-
-    # simulate along width dimension
-    animation_path_width = joinpath(animation_dir, "$(channel_name)_width.mp4")
-    anim_width = @animate for i ∈ 1:size(data, 1)
-        show_snapshot_width(i)
-    end
-    mp4(anim_width, animation_path_width, fps=fps)
-
-    # simulate along depth dimension
-    animation_path_depth = joinpath(animation_dir, "$(channel_name)_depth.mp4")
-    anim_depth = @animate for i ∈ 1:size(data, 1)
-        show_snapshot_depth(i)
-    end
-    mp4(anim_depth, animation_path_depth, fps=fps)
-
-    # simulate along height dimension
-    animation_path_height = joinpath(animation_dir, "$(channel_name)_height.mp4")
-    anim_height = @animate for i ∈ 1:size(data, 1)
-        show_snapshot_height(i)
-    end
-    mp4(anim_height, animation_path_height, fps=fps)
 end
 
 
