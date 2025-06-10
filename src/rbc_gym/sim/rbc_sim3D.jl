@@ -4,6 +4,7 @@ using Oceananigans
 using Statistics
 using HDF5
 using ArgParse
+using Plots
 
 # script directory
 dirpath = string(@__DIR__)
@@ -64,13 +65,46 @@ function define_sample_grid(N, L, use_gpu)
 end
 
 
+function preprocess_action(action)
+    # According to Vasanth et al. (2024)
+    global actuators, actuator_limit, min_b, Δb
+
+    if size(action) != actuators
+        error("Action size does not match the number of actuators. Expected $(actuators), got $(size(action)).")
+    end
+
+    # Subtract mean to center the action around zero
+    action = action .- mean(action)
+
+    # Get maximum absolute value of the action or 1
+    K = max(1, maximum(abs.(action)))
+
+    # Add perturbations scaled by maximum to the action
+    a0 = fill(min_b + Δb, size(action))
+    return a0 + (action ./ K) .* actuator_limit
+end
+
+
+function bottom_T(x, y, t)
+    global action, domain, actuators
+
+    nx, ny = actuators
+    Lx, Ly = domain[1], domain[2]
+
+    i = clamp(floor(Int, x / Lx * nx) + 1, 1, nx)
+    j = clamp(floor(Int, y / Ly * ny) + 1, 1, ny)
+
+    return action[i, j]
+end
+
+
 function define_boundary_conditions(min_b, Δb)
     u_bcs = FieldBoundaryConditions(top=ValueBoundaryCondition(0),
         bottom=ValueBoundaryCondition(0))
     v_bcs = FieldBoundaryConditions(top=ValueBoundaryCondition(0),
         bottom=ValueBoundaryCondition(0))
     b_bcs = FieldBoundaryConditions(top=ValueBoundaryCondition(min_b),
-        bottom=ValueBoundaryCondition(min_b + Δb))
+        bottom=ValueBoundaryCondition(bottom_T))
     return u_bcs, v_bcs, b_bcs
 end
 

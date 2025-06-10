@@ -14,7 +14,7 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=2500, grid=[48, 48, 32], heaters=12, heater_limit=0.75, dt=0.125, seed=42, checkpoint_path=nothing, use_gpu=false)
+function initialize_simulation(; Ra=2500, grid=[48, 48, 32], T_diff=[0, 1], heaters=8, heater_limit=0.75, dt=0.125, seed=42, checkpoint_path=nothing, use_gpu=false)
     oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
         stdout,
         Logging.Warn;
@@ -26,13 +26,13 @@ function initialize_simulation(; Ra=2500, grid=[48, 48, 32], heaters=12, heater_
     global N = grid
     global L = [2 * pi, 2 * pi, 2]
     global domain = L
-    global Δb = 1
-    global actuators = [heaters, heaters]
+    global min_b = T_diff[1]
+    global Δb = T_diff[2] - T_diff[1]
+    global actuators = (heaters, heaters)
     global actuator_limit = heater_limit
     global Δt = dt 
 
     Pr = 0.7
-    min_b = 0
     random_kick = 0.01
     Δt_solver = 0.01
 
@@ -79,11 +79,13 @@ Step the simulation forward by one timestep
 """
 function step_simulation(actuation)
     global simulation, model, Δt, t_ff, N, step, time
-    global action = actuation
 
     if simulation === nothing
         error("Simulation not initialized. Call initialize_simulation first.")
     end
+
+    # preprocess action
+    global action = preprocess_action(actuation)
 
     # Run for one step
     run!(simulation)

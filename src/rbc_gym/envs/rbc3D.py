@@ -1,7 +1,6 @@
 import logging
 import warnings
 import os
-from pathlib import Path
 from enum import IntEnum
 from typing import Any, Dict, Optional, Tuple
 import matplotlib
@@ -43,7 +42,8 @@ class RayleighBenardConvection3DEnv(gym.Env):
         rayleigh_number: Optional[int] = 10_000,
         episode_length: Optional[int] = 300,
         state_shape: Optional[list] = [32, 48, 48],
-        heater_segments: Optional[int] = 12,
+        temperature_difference: Optional[list] = [0, 1],
+        heater_segments: Optional[int] = 8,
         heater_limit: Optional[float] = 0.75,
         heater_duration: Optional[float] = 0.125,
         use_gpu: Optional[bool] = False,
@@ -62,6 +62,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.ra = rayleigh_number
         self.episode_length = episode_length
         self.state_shape = state_shape
+        self.temperature_difference = temperature_difference
         self.heater_segments = heater_segments
         self.heater_limit = heater_limit
         self.heater_duration = heater_duration
@@ -79,7 +80,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         # Observation Space
         lows = np.stack(
             [
-                np.full(self.state_shape, 1),
+                np.full(self.state_shape, self.temperature_difference[0]),
                 np.full(self.state_shape, -np.inf),
                 np.full(self.state_shape, -np.inf),
             ],
@@ -88,7 +89,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         )
         highs = np.stack(
             [
-                np.full(self.state_shape, 2 + self.heater_limit),
+                np.full(self.state_shape, self.temperature_difference[1] + self.heater_limit),
                 np.full(self.state_shape, np.inf),
                 np.full(self.state_shape, np.inf),
             ],
@@ -131,6 +132,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.sim.initialize_simulation(
             Ra=self.ra,
             grid=self.state_shape[::-1],  # julia uses column-major order
+            T_diff=self.temperature_difference,
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
@@ -222,6 +224,10 @@ class RayleighBenardConvection3DEnv(gym.Env):
             dz *= stride
         nz, ny, nx = T.shape
 
+        # get min max value
+        cmin = self.temperature_difference[0]
+        cmax = self.temperature_difference[1] + self.heater_limit
+
         # Build a rectilinear grid (VTK’s preferred format for cell‑centred data)
         x = np.arange(nx) * dx
         y = np.arange(ny) * dy
@@ -239,7 +245,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
                 grid,
                 scalars="T",
                 cmap="turbo",
-                clim=(0.0, 1.0),
+                clim=(cmin, cmax),
                 opacity="sigmoid_1",
                 shade=True,
             )
@@ -253,7 +259,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
                 grid,
                 scalars="T",
                 cmap="turbo",
-                clim=(0.0, 1.0),
+                clim=(cmin, cmax),
                 opacity="sigmoid_1",
                 shade=True,
             )
@@ -277,7 +283,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
         obs = self.__get_obs()
         T = obs[RBC3DField.T]
-        plt.imshow(T[:, :, T.shape[2] // 2], cmap="turbo")
+        plt.imshow(T[0, :, :], cmap="turbo")
         plt.colorbar(label="Temperature")
         plt.title("Temperature Field at Mid-Plane")
         plt.xlabel("X")
