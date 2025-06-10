@@ -4,7 +4,6 @@ using Oceananigans
 using Statistics
 using HDF5
 using ArgParse
-using Plots
 
 # script directory
 dirpath = string(@__DIR__)
