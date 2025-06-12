@@ -259,7 +259,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             self._grid["T"] = T.ravel(order="C")
 
         if self._plotter is None:
-            self._plotter = pv.Plotter(off_screen=(not live), window_size=(800, 600))
+            self._plotter = pv.Plotter(off_screen=(not live), window_size=(800, 608))
             self._volume = self._plotter.add_volume(
                 self._grid,
                 scalars="T",

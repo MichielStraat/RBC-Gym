@@ -10,7 +10,7 @@ using ProgressMeter
 dirpath = string(@__DIR__)
 
 
-function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap, duration, use_gpu)
+function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, b, random_kick, Δt, Δt_snap, duration, use_gpu)
 
     println("Simulating 3D Rayleigh-Bénard convection with parameters:")
     println("  Directory: $dir")
@@ -20,8 +20,7 @@ function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
     println("  Prandtl Number (Pr): $Pr")
     println("  Grid Size (N): $N")
     println("  Domain Size (L): $L")
-    println("  Minimum Temperature (min_b): $min_b")
-    println("  Temperature Difference (Δb): $Δb")
+    println("  Temperature Difference (b): $b")
     println("  Random Kick: $random_kick")
     println("  Time Step (Δt): $Δt")
     println("  Snapshot Interval (Δt_snap): $Δt_snap")
@@ -37,11 +36,15 @@ function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
 
     totalsteps = Int(div(duration, Δt_snap * t_ff))
 
+    global min_b, Δb
+    min_b = b[1]
+    Δb = b[2] - b[1]
+
     global domain, action, actuators, actuator_limit
     domain = L
     actuators = (8, 8)
-    action = zeros(actuators...)
     actuator_limit = 0.9
+    action = preprocess_action(zeros(actuators...))
 
     grid = define_sample_grid(N, L, use_gpu)
     u_bcs, v_bcs, b_bcs = define_boundary_conditions(min_b, Δb)
@@ -72,7 +75,7 @@ function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
         model = define_model(grid, ν, κ, u_bcs, v_bcs, b_bcs)
         initialize_model(model, min_b, L[3], Δb, random_kick)
 
-        simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
+        simulation = Simulation(model, Δt=Δt * t_ff, stop_time=Δt_snap * t_ff)
         simulation.verbose = false
 
         success = simulate_model(simulation, model, Δt, t_ff, Δt_snap, totalsteps, N)
@@ -251,15 +254,11 @@ function parse_arguments()
         arg_type = Float64
         nargs = 3
         default = [4 * pi, 4 * pi, 2]
-        "--min_b"
-        help = "The temperature of the top plate"
+        "--b"
+        help = "The temperature of the bottom and top plate"
         arg_type = Float64
-        default = 1
-        "--delta_b"
-        help = "The temperature difference between the bottom and top plate"
-        arg_type = Float64
-        default = 1
-        dest_name = "Δb"
+        nargs = 2
+        default = [1, 2]
         "--random_kick"
         help = "The amplitude of the random initial perturbation (kick)"
         arg_type = Float64
@@ -298,8 +297,7 @@ if (is_script)
         args["Pr"],
         args["N"],
         args["L"],
-        args["min_b"],
-        args["Δb"],
+        args["b"],
         args["random_kick"],
         args["Δt"],
         args["Δt_snap"],
