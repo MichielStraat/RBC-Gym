@@ -28,7 +28,6 @@ function simulate_2d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
     grid = define_sample_grid(N, L, use_gpu)
     u_bcs, b_bcs = define_boundary_conditions(min_b, Δb)
 
-    # create dataset
     model = define_model(grid, ν, κ, u_bcs, b_bcs)
 
     if !isdir(dir)
@@ -53,7 +52,7 @@ function simulate_2d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
         model = define_model(grid, ν, κ, u_bcs, b_bcs)
         initialize_model(model, min_b, L[2], Δb, random_kick)
 
-        global simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
+        simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
         simulation.verbose = false
 
         success = simulate_model(simulation, model, Δt, Δt_snap, totalsteps, N)
@@ -65,9 +64,6 @@ function simulate_2d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, rando
         db[i, :, :, :] = model.tracers.b
         du[i, :, :, :] = model.velocities.u
         dw[i, :, :, :] = model.velocities.w
-
-        # display(heatmap(model.tracers.b[1:96,1,1:64]'; xlabel="x", ylabel="z", title="Tracer b field"))
-        # sleep(20)
     end
 
     # Save the simulation results to a file

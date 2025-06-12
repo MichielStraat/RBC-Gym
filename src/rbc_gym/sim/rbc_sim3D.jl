@@ -4,13 +4,28 @@ using Oceananigans
 using Statistics
 using HDF5
 using ArgParse
+using ProgressMeter
 
 # script directory
 dirpath = string(@__DIR__)
 
 
-function simulate_3d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap, duration,
-    use_gpu, visualize, fps; sim_name=nothing)
+function simulate_3d_rb(dir, seed, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick, Δt, Δt_snap, duration, use_gpu)
+
+    println("Simulating 3D Rayleigh-Bénard convection with parameters:")
+    println("  Directory: $dir")
+    println("  Seed: $seed")
+    println("  Random Initializations: $random_inits")
+    println("  Rayleigh Number (Ra): $Ra")
+    println("  Prandtl Number (Pr): $Pr")
+    println("  Grid Size (N): $N")
+    println("  Domain Size (L): $L")
+    println("  Minimum Temperature (min_b): $min_b")
+    println("  Temperature Difference (Δb): $Δb")
+    println("  Random Kick: $random_kick")
+    println("  Time Step (Δt): $Δt")
+    println("  Snapshot Interval (Δt_snap): $Δt_snap")
+    println("  Duration: $duration")
 
     ν = sqrt(Pr / Ra) # c.f. line 33: https://github.com/spectralDNS/shenfun/blob/master/demo/RayleighBenard.py
     κ = 1 / sqrt(Pr * Ra) # c.f. line 37: https://github.com/spectralDNS/shenfun/blob/master/demo/RayleighBenard.py
@@ -22,33 +37,59 @@ function simulate_3d_rb(dir, random_inits, Ra, Pr, N, L, min_b, Δb, random_kick
 
     totalsteps = Int(div(duration, Δt_snap * t_ff))
 
+    global domain, action, actuators, actuator_limit
+    domain = L
+    actuators = (8, 8)
+    action = zeros(actuators...)
+    actuator_limit = 0.9
+
     grid = define_sample_grid(N, L, use_gpu)
     u_bcs, v_bcs, b_bcs = define_boundary_conditions(min_b, Δb)
+
+    model = define_model(grid, ν, κ, u_bcs, v_bcs, b_bcs)
+
+    if !isdir(dir)
+        mkpath(dir)
+    end
+    path = joinpath(dir, "3D_ckpt_ra$(Ra).h5")
+    h5_file = h5open(path, "w")
+
+    attrs(h5_file)["num_episodes"] = random_inits
+    attrs(h5_file)["start_seed"] = seed
+    db = create_dataset(h5_file, "b", datatype(Float64), dataspace(random_inits, size(model.tracers.b)...))
+    du = create_dataset(h5_file, "u", datatype(Float64), dataspace(random_inits, size(model.velocities.u)...))
+    dv = create_dataset(h5_file, "v", datatype(Float64), dataspace(random_inits, size(model.velocities.v)...))
+    dw = create_dataset(h5_file, "w", datatype(Float64), dataspace(random_inits, size(model.velocities.w)...))
+
 
     for i ∈ 1:random_inits
         println("Simulating random initialization $(i)/$(random_inits)...")
 
-        if (isnothing(sim_name))
-            sim_name = "x$(N[1])_y$(N[2])_z$(N[3])_Ra$(Ra)_Pr$(Pr)_t$(Δt)_snap$(Δt_snap)_dur$(duration)"
-        end
-        h5_file, dataset, h5_file_path, sim_num = create_hdf5_dataset(dir, sim_name, N, totalsteps)
-
         # Make sure that every random initialization is indeed independend of each other
         # (even when script is restarted)
-        Random.seed!(sim_num)
+        Random.seed!(seed + i)
 
         model = define_model(grid, ν, κ, u_bcs, v_bcs, b_bcs)
         initialize_model(model, min_b, L[3], Δb, random_kick)
 
-        success = simulate_model(model, dataset, Δt, t_ff, Δt_snap, totalsteps, N)
+        simulation = Simulation(model, Δt=Δt, stop_time=Δt_snap)
+        simulation.verbose = false
+
+        success = simulate_model(simulation, model, Δt, t_ff, Δt_snap, totalsteps, N)
 
         if (!success)
             return
         end
 
-        close(h5_file)
-        println("Simulation data saved as: $(h5_file_path)")
+        db[i, :, :, :] = model.tracers.b
+        du[i, :, :, :] = model.velocities.u
+        dv[i, :, :, :] = model.velocities.v
+        dw[i, :, :, :] = model.velocities.w
     end
+
+    # Save the simulation results to a file
+    close(h5_file)
+    println("Saved data to: ", h5_file)
 end
 
 
@@ -127,69 +168,44 @@ function initialize_model(model, min_b, Lz, Δb, kick)
     uᵢ(x, y, z) = kick * randn()
     vᵢ(x, y, z) = kick * randn()
     wᵢ(x, y, z) = kick * randn()
-    bᵢ(x, y, z) = min_b + (Lz - z) * Δb / 2 + kick * randn()
+    bᵢ(x, y, z) = clamp(min_b + (Lz - z) * Δb / 2 + kick * randn(), min_b, min_b + Δb)
 
     # Send the initial conditions to the model to initialize the variables
     set!(model, u=uᵢ, v=vᵢ, w=wᵢ, b=bᵢ)
 end
 
 
-function create_hdf5_dataset(dir, sim_name, N, totalsteps)
-    sim_dir = joinpath(dir, "data", sim_name)
-    mkpath(sim_dir) # create directory if not existent
+function initialize_from_checkpoint(model, path)
+    h5_file = h5open(path, "r")
 
-    # compute number of this simulation
-    sim_num = 1
-    while isfile(joinpath(sim_dir, "sim$(sim_num)", "sim.h5"))
-        sim_num += 1
-    end
+    n = attrs(h5_file)["num_episodes"]
+    idx = rand(1:n)
 
-    mkpath(joinpath(sim_dir, "sim$(sim_num)"))
-    sim_path = joinpath(sim_dir, "sim$(sim_num)", "sim.h5")
-    h5_file = h5open(sim_path, "w")
-    # save temperature and velocities in one dataset:
-    dataset = create_dataset(h5_file, "data", datatype(Float64),
-        dataspace(totalsteps + 1, 4, N...), chunk=(1, 1, N...))
+    bb = read(h5_file, "b")[idx,:,:,:]
+    uu = read(h5_file, "u")[idx,:,:,:]
+    vv = read(h5_file, "v")[idx,:,:,:]
+    ww = read(h5_file, "w")[idx,:,:,:]
 
-    return h5_file, dataset, sim_path, sim_num
+    println("Loading checkpoint from file: $path at index: $idx")
+    set!(model, u = uu, v = vv, w = ww, b = bb)
+    close(h5_file)
 end
 
 
-function simulate_model(model, dataset, Δt, t_ff, Δt_snap, totalsteps, N)
-    simulation = Simulation(model, Δt=Δt * t_ff, stop_time=Δt_snap * t_ff)
-    simulation.verbose = true
-
+function simulate_model(simulation, model, Δt, t_ff, Δt_snap, totalsteps, N)
     cur_time = 0.0
-
-    # save initial state
-    save_simulation_step(model, dataset, 1, N)
-
-    for i in 1:totalsteps
-        #update the simulation stop time for the next step (in free fall time units)
-        global simulation.stop_time = Δt_snap * t_ff * i
-
+    @showprogress 2 "Simulating..." for i in 1:totalsteps
         run!(simulation)
+        simulation.stop_time += Δt_snap * t_ff
         cur_time += Δt_snap * t_ff
-
-        save_simulation_step(model, dataset, i + 1, N)
 
         if (step_contains_NaNs(model, N))
             printstyled("[ERROR] NaN values found!\n"; color=:red)
             return false
         end
-
-        println(cur_time)
     end
 
     return true
-end
-
-
-function save_simulation_step(model, dataset, step, N)
-    dataset[step, 1, :, :, :] = model.tracers.b[1:N[1], 1:N[2], 1:N[3]]
-    dataset[step, 2, :, :, :] = model.velocities.u[1:N[1], 1:N[2], 1:N[3]]
-    dataset[step, 3, :, :, :] = model.velocities.v[1:N[1], 1:N[2], 1:N[3]]
-    dataset[step, 4, :, :, :] = model.velocities.w[1:N[1], 1:N[2], 1:N[3]]
 end
 
 
@@ -206,13 +222,13 @@ function parse_arguments()
     s = ArgParseSettings(description="Simulates 3D Rayleigh-Bénard.")
 
     @add_arg_table s begin
-        "--sim_name"
-        help = "The name of the simulation. Defaults to the following scheme \
-        x<N[1]>_y<N[2]>_z<N[3]>_Ra<Ra>_Pr<Pr>_t<Δt>_snap<Δt_snap>_dur<duration>"
-        default = nothing
         "--dir"
         help = "The path to the directory to store the simulations in."
         default = joinpath(dirpath, "data")
+        "--seed"
+        help = "Random seed for the simulation."
+        arg_type = Int
+        default = 42
         "--random_inits"
         help = "The number of random initializations to simulate"
         arg_type = Int
@@ -229,16 +245,16 @@ function parse_arguments()
         help = "The size of the grid [width, depth, height]"
         arg_type = Int
         nargs = 3
-        default = [48, 48, 32]
+        default = [32, 32, 16]
         "--L"
         help = "The spatial dimensions of the domain [width, height]"
         arg_type = Float64
         nargs = 3
-        default = [2 * pi, 2 * pi, 2]
+        default = [4 * pi, 4 * pi, 2]
         "--min_b"
         help = "The temperature of the top plate"
         arg_type = Float64
-        default = 0
+        default = 1
         "--delta_b"
         help = "The temperature difference between the bottom and top plate"
         arg_type = Float64
@@ -247,7 +263,7 @@ function parse_arguments()
         "--random_kick"
         help = "The amplitude of the random initial perturbation (kick)"
         arg_type = Float64
-        default = 0.2
+        default = 0.01
         "--delta_t"
         help = "Time delta between simulated steps (in free fall time units)"
         arg_type = Float64
@@ -261,19 +277,11 @@ function parse_arguments()
         "--duration"
         help = "The duration of a simulation"
         arg_type = Int
-        default = 300
+        default = 200
         "--use_cpu"
         help = "Runs the simulation on CPU when argument given."
         action = :store_false
         dest_name = "use_gpu"
-        "--no_visualization"
-        help = "No animation of the simulated data is created when argument given."
-        action = :store_false
-        dest_name = "visualize"
-        "--fps"
-        help = "The fps of the animated simulation data"
-        arg_type = Int
-        default = 15
     end
 
     return parse_args(s)
@@ -284,6 +292,7 @@ if (is_script)
     args = parse_arguments()
     simulate_3d_rb(
         args["dir"],
+        args["seed"],
         args["random_inits"],
         args["Ra"],
         args["Pr"],
@@ -295,8 +304,5 @@ if (is_script)
         args["Δt"],
         args["Δt_snap"],
         args["duration"],
-        args["use_gpu"],
-        args["visualize"],
-        args["fps"],
-        sim_name=args["sim_name"])
+        args["use_gpu"])
 end

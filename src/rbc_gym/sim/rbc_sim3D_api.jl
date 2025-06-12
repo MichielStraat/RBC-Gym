@@ -14,7 +14,7 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=2500, grid=[48, 48, 32], T_diff=[0, 1], heaters=8, heater_limit=0.75, dt=0.125, seed=42, checkpoint_path=nothing, use_gpu=false)
+function initialize_simulation(; Ra=2500, Pr=0.7, L=[4*pi, 4*pi, 2], grid=[32, 32, 16], T_diff=[1, 2], heaters=8, heater_limit=0.9, dt=0.125, seed=42, checkpoint_path=nothing, use_gpu=false)
     oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
         stdout,
         Logging.Warn;
@@ -24,7 +24,6 @@ function initialize_simulation(; Ra=2500, grid=[48, 48, 32], T_diff=[0, 1], heat
 
     # Setup simulation parameters
     global N = grid
-    global L = [2 * pi, 2 * pi, 2]
     global domain = L
     global min_b = T_diff[1]
     global Δb = T_diff[2] - T_diff[1]
@@ -32,12 +31,11 @@ function initialize_simulation(; Ra=2500, grid=[48, 48, 32], T_diff=[0, 1], heat
     global actuator_limit = heater_limit
     global Δt = dt 
 
-    Pr = 0.7
     random_kick = 0.01
     Δt_solver = 0.01
 
     ν = sqrt(Pr / Ra)
-    κ = 1 / sqrt(Pr * Ra)
+    global κ = 1 / sqrt(Pr * Ra)
 
     # simulation is done in free-flow time units
     # t_ff = H/U_ff = H/sqrt(gαΔTH) = H/(1/H) = H^2
@@ -62,7 +60,6 @@ function initialize_simulation(; Ra=2500, grid=[48, 48, 32], T_diff=[0, 1], heat
     else
         initialize_from_checkpoint(model, checkpoint_path)
     end
-    
 
     # Setup simulation
     global simulation = Simulation(model, Δt=Δt_solver * t_ff, stop_time=Δt * t_ff)
@@ -135,7 +132,8 @@ end
 Get nusselt number
 """
 function get_nusselt()
-    global model, L, Δb
+    # Definition by Vasanth et al 2024
+    global κ
     
     data = get_state()
 
@@ -143,25 +141,10 @@ function get_nusselt()
     b = data[1, :, :, :]
     w = data[4, :, :, :]
 
-    κ = model.closure.κ[1]      # thermal diffusivity κ
-    H = L[3]                    # domain height
-
-    # ── Convective flux: ⟨w b⟩ ───────────────────────────────────────────────
+    # Convective flux: ⟨w b⟩
     q_conv = mean(b .* w)        # full‑volume average
-
-    # ── Conductive flux: κ ⟨∂z b⟩ ───────────────────────────────────────────
-    #
-    # Average b over horizontal planes (x & y) to obtain a 1‑D profile b(z),
-    # then compute its vertical gradient ∂z b and take its mean.
-    #
-    b_hmean = mean(b, dims=(1, 2))              # size (1, 1, Nz)
-    Nz = size(b_hmean, 3)
-    dz = H / Nz                                 # vertical grid spacing
-    dzb = diff(vec(b_hmean)) / dz               # finite‑difference ∂z b (Nz‑1 values)
-    q_cond = κ * mean(dzb)
-
-    # ── Nusselt number (dimensionless heat flux) ────────────────────────────
-    return (q_conv - q_cond) / (κ * Δb / H)
+    
+    return 1 + (q_conv / κ )
 end
 
 

@@ -58,7 +58,6 @@ function initialize_simulation(; Ra=10^5, sensors=[48, 8], grid=[96, 64], heater
     else
         initialize_from_checkpoint(model, checkpoint_path)
     end
-    
 
     # Setup simulation
     global simulation = Simulation(model, Δt=Δt_solver, stop_time=Δt)

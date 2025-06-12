@@ -2,7 +2,7 @@ from typing import Any
 
 import gymnasium as gym
 import numpy as np
-from rbc_gym.envs import RayleighBenardConvection2DEnv
+from rbc_gym.envs import RayleighBenardConvection2DEnv, RayleighBenardConvection3DEnv
 
 
 class RBCNormalizeObservation(gym.ObservationWrapper):
@@ -10,7 +10,7 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
 
     def __init__(
         self,
-        env: RayleighBenardConvection2DEnv,
+        env: RayleighBenardConvection2DEnv | RayleighBenardConvection3DEnv,
         heater_limit: int,
         maxval: int = 1,
     ):
@@ -21,10 +21,11 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
         self.heater_limit = heater_limit
 
         # fixed min and max values for each channel
-        minT = 1
-        maxT = 2 + self.heater_limit
-        self.min_vals = [minT, -1.3, -1.3]
-        self.max_vals = [maxT, 1.3, 1.3]
+        T = env.unwrapped.temperature_difference
+        minT = T[0]
+        maxT = T[1] + self.heater_limit
+        self.min_vals = [minT, -1.3, -1.3, -1.3]
+        self.max_vals = [maxT, 1.3, 1.3, 1.3]
 
     def observation(self, obs) -> Any:
         # Normalize each channel

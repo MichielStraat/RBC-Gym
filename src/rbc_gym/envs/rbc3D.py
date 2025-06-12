@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 import warnings
 import os
 from enum import IntEnum
@@ -39,13 +40,15 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
     def __init__(
         self,
-        rayleigh_number: Optional[int] = 10_000,
-        episode_length: Optional[int] = 300,
-        state_shape: Optional[list] = [32, 48, 48],
-        temperature_difference: Optional[list] = [0, 1],
+        rayleigh_number: Optional[int] = 2500,
+        prandtl_number: Optional[float] = 0.7,
+        domain: Optional[list] = [2, 4 * np.pi, 4 * np.pi],
+        state_shape: Optional[list] = (16, 32, 32),
+        temperature_difference: Optional[list] = [1, 2],
         heater_segments: Optional[int] = 8,
-        heater_limit: Optional[float] = 0.75,
+        heater_limit: Optional[float] = 0.9,
         heater_duration: Optional[float] = 0.125,
+        episode_length: Optional[int] = 300,
         use_gpu: Optional[bool] = False,
         checkpoint: Optional[str] = None,
         render_mode: Optional[str] = None,
@@ -60,6 +63,8 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
         # Environment configuration
         self.ra = rayleigh_number
+        self.pr = prandtl_number
+        self.domain = domain
         self.episode_length = episode_length
         self.state_shape = state_shape
         self.temperature_difference = temperature_difference
@@ -83,13 +88,17 @@ class RayleighBenardConvection3DEnv(gym.Env):
                 np.full(self.state_shape, self.temperature_difference[0]),
                 np.full(self.state_shape, -np.inf),
                 np.full(self.state_shape, -np.inf),
+                np.full(self.state_shape, -np.inf),
             ],
             dtype=np.float32,
             axis=0,
         )
         highs = np.stack(
             [
-                np.full(self.state_shape, self.temperature_difference[1] + self.heater_limit),
+                np.full(
+                    self.state_shape, self.temperature_difference[1] + self.heater_limit
+                ),
+                np.full(self.state_shape, np.inf),
                 np.full(self.state_shape, np.inf),
                 np.full(self.state_shape, np.inf),
             ],
@@ -100,7 +109,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             lows,
             highs,
             shape=(
-                3,
+                4,
                 self.state_shape[0],
                 self.state_shape[1],
                 self.state_shape[2],
@@ -127,17 +136,29 @@ class RayleighBenardConvection3DEnv(gym.Env):
         options: Dict[str, Any] | None = None,
     ) -> Tuple[Any, Dict[str, Any]]:
         super().reset(seed=seed)
-
+        # Set checkpoint
+        path = None
+        if self.checkpoint:
+            path = Path(self.checkpoint)
+            self.logger.info(f"Using checkpoint file {path.absolute()}")
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"Checkpoint file {path} does not exist. "
+                    "Please provide a valid checkpoint directory."
+                )
+            path = str(path.absolute())
         # initialize julia simulation
         self.sim.initialize_simulation(
             Ra=self.ra,
+            Pr=self.pr,
+            L=self.domain[::-1],
             grid=self.state_shape[::-1],  # julia uses column-major order
             T_diff=self.temperature_difference,
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
             seed=self.np_random_seed,
-            checkpoint_path=None,
+            checkpoint_path=path,
             use_gpu=self.use_gpu,
         )
 
@@ -189,9 +210,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             "nusselt": nu,
         }
 
-    def render(
-        self, dx: float = 1.0, dy: float = 1.0, dz: float = 1.0, stride: int = 1
-    ):
+    def render(self):
         """
         Visualise the current 3‑D temperature field using PyVista.
         Parameters
@@ -204,88 +223,69 @@ class RayleighBenardConvection3DEnv(gym.Env):
             other voxel, …). Rendering ≈ N³/stride³ voxels, so large stride
             values speed up volume display.
         """
+        if self.render_mode == "human":
+            live = True
+        elif self.render_mode == "rgb_array":
+            live = False
+        else:
+            return None
+
         if pv is None:
             raise ModuleNotFoundError(
                 "PyVista is required for volume rendering. "
                 "Install it with `pip install pyvista`."
             )
 
-        # Get observation
-        obs = self.__get_obs()
-
         # Temperature is channel 0
-        T = obs[RBC3DField.T]
-        # print(f"T variance {T.var():.3f}, mean {T.mean():.3f}, max {T.max():.3f}")
-        stride = max(1, int(stride))
-        if stride > 1:
-            T = T[::stride, ::stride, ::stride]
-            dx *= stride
-            dy *= stride
-            dz *= stride
-        nz, ny, nx = T.shape
+        T = self.__get_obs()[RBC3DField.T]
 
         # get min max value
         cmin = self.temperature_difference[0]
-        cmax = self.temperature_difference[1] + self.heater_limit
+        cmax = self.temperature_difference[1]
 
-        # Build a rectilinear grid (VTK’s preferred format for cell‑centred data)
-        x = np.arange(nx) * dx
-        y = np.arange(ny) * dy
-        z = np.arange(nz) * dz
+        if self._grid is None:
+            # Build a rectilinear grid (VTK’s preferred format for cell‑centred data)
+            nz, ny, nx = T.shape
 
-        # update the RectilinearGrid
-        grid = pv.RectilinearGrid(x, y, z)
+            # Convert index coordinates to physical space
+            Lz, Ly, Lx = self.domain
+            x = np.arange(nx) * Lx / nx
+            y = np.arange(ny) * Ly / ny
+            z = np.arange(nz) * Lz / nz
 
-        # VTK is column‑major like Julia, so flatten in Fortran order
-        grid["T"] = T.ravel(order="C")
+            self._grid = pv.RectilinearGrid(x, y, z)
 
-        if self.render_mode == "human":
-            p = pv.Plotter()
-            p.add_volume(
-                grid,
+            # VTK is column‑major like Julia, so flatten in Fortran order
+            self._grid["T"] = T.ravel(order="C")
+
+        if self._plotter is None:
+            self._plotter = pv.Plotter(off_screen=(not live), window_size=(800, 600))
+            self._volume = self._plotter.add_volume(
+                self._grid,
                 scalars="T",
                 cmap="turbo",
                 clim=(cmin, cmax),
                 opacity="sigmoid_1",
-                shade=True,
             )
-            p.add_axes()
-            p.show(auto_close=True, interactive=False)
+            self._plotter.add_axes()
 
-        elif self.render_mode == "rgb_array":
-            # Off‑screen render to an image array for Gym‑style RGB output
-            p = pv.Plotter(off_screen=True, window_size=(800, 800))
-            p.add_volume(
-                grid,
-                scalars="T",
-                cmap="turbo",
-                clim=(cmin, cmax),
-                opacity="sigmoid_1",
-                shade=True,
-            )
-            p.add_axes()
-            img = p.screenshot(return_img=True)
-            p.close()
-            # img is RGBA uint8; convert to RGB for Gym
-            return img[:, :, :3]
+            if live:
+                self._plotter.show(auto_close=True, interactive_update=True)
 
+        self._grid.point_data["T"][:] = T.ravel(order="C")
+        if live:
+            self._plotter.update(force_redraw=True)
+            self._plotter.render()
         else:
-            raise ValueError(
-                f"Unknown render_mode '{self.render_mode}'. "
-                "Expected 'human' or 'rgb_array'."
-            )
+            im = self._plotter.screenshot(return_img=True)
+            self._plotter.close()
+            self._plotter = None
+            return im[:, :, :3]
 
-    def plot_T(self):
-        """
-        Plot the temperature field using Matplotlib.
-        """
-        import matplotlib.pyplot as plt
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
 
-        obs = self.__get_obs()
-        T = obs[RBC3DField.T]
-        plt.imshow(T[0, :, :], cmap="turbo")
-        plt.colorbar(label="Temperature")
-        plt.title("Temperature Field at Mid-Plane")
-        plt.xlabel("X")
-        plt.ylabel("Y")
-        plt.show()
+        if self._plotter is not None:
+            self._plotter.close()

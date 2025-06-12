@@ -57,6 +57,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         self.episode_length = episode_length
         self.observation_shape = observation_shape
         self.state_shape = state_shape
+        self.temperature_difference = [1, 2]
         self.heater_segments = heater_segments
         self.heater_limit = heater_limit
         self.heater_duration = heater_duration
