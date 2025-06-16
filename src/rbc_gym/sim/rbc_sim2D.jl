@@ -180,7 +180,7 @@ function initialize_from_checkpoint(model, path)
     uu = read(h5_file, "u")[idx,:,:,:]
     ww = read(h5_file, "w")[idx,:,:,:]
 
-    println("Loading checkpoint from file: $path at index: $idx")
+    println("Loading checkpoint with index: $idx from file: $path")
     set!(model, u = uu, w = ww, b = bb)
     close(h5_file)
 end

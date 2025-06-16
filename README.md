@@ -44,13 +44,12 @@ env = gym.make(
 - [x] Normalize Reward Wrapper
 - [x] Reward Shaping Wrapper
 - [x] generate Checkpoints for train and test for all Ra
+- [x] 3D simulation
 
 - [ ] Docs
-- [ ] Make more parameters accessible to the gym env
 - [ ] GPU compatibility
 - [ ] Create Dataset from python gym
 - [ ] PyTests
-- [ ] 3D simulation
 - [ ] Multi-Agent Environment via PettingZoo
 
 ## Time efficiency

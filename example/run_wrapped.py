@@ -27,6 +27,12 @@ with tqdm(range(env.unwrapped.episode_length)) as pbar:
         action = env.action_space.sample() * 0
         observation, reward, terminated, truncated, info = env.step(action)
         env.render()
-        pbar.set_postfix({"reward": reward, "nusselt": info["nusselt_obs"], "cell_dist": info["cell_dist"]})
+        pbar.set_postfix(
+            {
+                "reward": reward,
+                "nusselt": info["nusselt_obs"],
+                "cell_dist": info["cell_dist"],
+            }
+        )
         if truncated:
             break

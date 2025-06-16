@@ -270,7 +270,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             self._plotter.add_axes()
 
             if live:
-                self._plotter.show(auto_close=True, interactive_update=True)
+                self._plotter.show(auto_close=False, interactive_update=True)
 
         self._grid.point_data["T"][:] = T.ravel(order="C")
         if live:

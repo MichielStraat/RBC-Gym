@@ -6,7 +6,9 @@ from rbc_gym.envs import RayleighBenardConvection2DEnv, RayleighBenardConvection
 class RBCNormalizeReward(gym.RewardWrapper):
     """Normalize the reward to ~[0, 1]"""
 
-    def __init__(self, env: gym.Env):
+    def __init__(
+        self, env: RayleighBenardConvection2DEnv | RayleighBenardConvection3DEnv
+    ):
         super().__init__(env)
 
         self.logger = logging.getLogger(__name__)
