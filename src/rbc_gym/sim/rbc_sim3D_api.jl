@@ -37,7 +37,7 @@ function initialize_simulation(; Ra=2500, Pr=0.7, L=[4*pi, 4*pi, 2], grid=[32, 3
     ν = sqrt(Pr / Ra)
     global κ = 1 / sqrt(Pr * Ra)
 
-    # simulation is done in free-flow time units
+    # simulation is done in free-fall time units
     # t_ff = H/U_ff = H/sqrt(gαΔTH) = H/(1/H) = H^2
     # since computation of ν,κ above assumes that gαΔTH^3=1 ⇔ sqrt(gαΔTH) = 1/H
     global t_ff = L[3]^2
@@ -134,6 +134,7 @@ Get nusselt number
 function get_nusselt()
     # Definition by Vasanth et al 2024
     global κ
+    global Δb
     
     data = get_state()
 
@@ -141,8 +142,18 @@ function get_nusselt()
     b = data[1, :, :, :]
     w = data[4, :, :, :]
 
+    # get conductive reference temperature field
+    # build conduction profile
+    Nz = size(b, 3) # number of grid points in vertical direction
+    dz = 1 / Nz
+    z = dz/2 : dz : 1 - dz/2  # midpoints of grid cells in vertical direction
+    T_conductive = (1 .- z) .* Δb .+ min_b
+    T_conductive = reshape(T_conductive, (1, 1, Nz))
+    
+    Tprime = b .- T_conductive  # temperature deviation from conductive profile
+
     # Convective flux: ⟨w b⟩
-    q_conv = mean(b .* w)        # full‑volume average
+    q_conv = mean(Tprime .* w)        # full‑volume average
     
     return 1 + (q_conv / κ )
 end
