@@ -18,7 +18,7 @@ from rbc_gym.callbacks.callbacks import RenderCallback
 def main() -> None:
     env = gym.make("rbc_gym/RayleighBenardConvection3D-v0", render_mode="human", heater_duration=0.375)
     # Environment wrappers
-    env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1) # NOTE probably only eases training a bit, but should not stricly be necessary.
+    env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
     # env = RBCNormalizeReward(env) # TODO implement reward normalization for 3D for other Ra values, but probably not important right now if you don't use reward shaing
     # env = RBCRewardShaping(env, shaping_weight=0.1)   # TODO implement correctly for 3D, don't use for now
     # env = FlattenObservation(env) # NOTE should not be used with CNN feature extractor
