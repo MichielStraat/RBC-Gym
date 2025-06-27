@@ -11,7 +11,7 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
     def __init__(
         self,
         env: RayleighBenardConvection2DEnv | RayleighBenardConvection3DEnv,
-        heater_limit: int,
+        heater_limit: float,
         maxval: int = 1,
     ):
         gym.ObservationWrapper.__init__(self, env)
