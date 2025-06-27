@@ -16,6 +16,5 @@ class RenderCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.n_calls % self.check_freq == 0:
-            self.training_env.render()
-
+            self.training_env.render()            
         return True

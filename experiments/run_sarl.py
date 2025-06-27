@@ -6,6 +6,7 @@ from rbc_gym.wrappers import (
 )
 import gymnasium as gym
 from gymnasium.wrappers import FlattenObservation, FrameStackObservation
+from rbc_gym.models.CustomNetwork import CustomActorCriticPolicy
 
 import multiprocessing as mp
 
@@ -25,13 +26,12 @@ def main() -> None:
 
     policy_kwargs = dict(
         features_extractor_class=FluidCNNExtractor,
-        features_extractor_kwargs=dict(features_dim=64),
-        net_arch=[64, 64],
+        features_extractor_kwargs=dict(features_dim=8*4*8*8),
         share_features_extractor=True,
     )
 
     model = PPO(
-        "CnnPolicy",
+        CustomActorCriticPolicy,
         env,
         policy_kwargs=policy_kwargs,
         verbose=1,
