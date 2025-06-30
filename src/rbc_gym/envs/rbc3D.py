@@ -49,6 +49,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         heater_limit: Optional[float] = 0.9,
         heater_duration: Optional[float] = 0.125,
         episode_length: Optional[int] = 300,
+        dt_solver: Optional[float] = 0.01,
         use_gpu: Optional[bool] = False,
         checkpoint: Optional[str] = None,
         render_mode: Optional[str] = None,
@@ -66,6 +67,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.pr = prandtl_number
         self.domain = domain
         self.episode_length = episode_length
+        self.dt_solver = dt_solver
         self.state_shape = state_shape
         self.temperature_difference = temperature_difference
         self.heater_segments = heater_segments
@@ -157,6 +159,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
+            dt_solver=self.dt_solver,
             seed=self.np_random_seed,
             checkpoint_path=path,
             use_gpu=self.use_gpu,

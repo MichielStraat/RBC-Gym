@@ -14,7 +14,7 @@ global time = 0.0
 """
 Initialize a Rayleigh-Bénard simulation with the given parameters
 """
-function initialize_simulation(; Ra=2500, Pr=0.7, L=[4*pi, 4*pi, 2], grid=[32, 32, 16], T_diff=[1, 2], heaters=8, heater_limit=0.9, dt=0.125, seed=42, checkpoint_path=nothing, use_gpu=false)
+function initialize_simulation(; Ra=2500, Pr=0.7, L=[4*pi, 4*pi, 2], grid=[32, 32, 16], T_diff=[1, 2], heaters=8, heater_limit=0.9, dt=0.125, dt_solver=0.01, seed=42, checkpoint_path=nothing, use_gpu=false)
     oceananigans_logger = Oceananigans.Logger.OceananigansLogger(
         stdout,
         Logging.Warn;
@@ -32,7 +32,7 @@ function initialize_simulation(; Ra=2500, Pr=0.7, L=[4*pi, 4*pi, 2], grid=[32, 3
     global Δt = dt 
 
     random_kick = 0.01
-    Δt_solver = 0.01
+    Δt_solver = dt_solver
 
     ν = sqrt(Pr / Ra)
     global κ = 1 / sqrt(Pr * Ra)

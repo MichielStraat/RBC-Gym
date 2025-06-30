@@ -28,10 +28,11 @@ def perform_experiment(rayleigh_numbers):
             "rbc_gym/RayleighBenardConvection3D-v0",
             render_mode="rgb_array",
             heater_duration=0.25,
+            dt_solver=0.005,
             rayleigh_number=ra,
             episode_length=300,
             use_gpu=False,
-            state_shape=(16,32,32),
+            state_shape=(32,64,64),
         )
 
         t_ff = 4  # free-fall time units, used for scaling in the environment
