@@ -289,3 +289,27 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
         if self._plotter is not None:
             self._plotter.close()
+
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+
+        # ✅ Shut down the Julia simulation
+        try:
+            self.sim.shutdown_simulation()
+            self.logger.info("✅ Julia simulation shut down successfully.")
+
+            self.sim.GC.gc()
+            self.logger.info("✅ Forced Julia GC from Python side.")
+        except Exception as e:
+            self.logger.warning(f"Could not shut down Julia simulation cleanly: {e}")
+
+        # ✅ Shut down the PyVista plotter
+        if self._plotter is not None:
+            self._plotter.close()
+            self.logger.info("✅ Closed PyVista plotter.")
+
+        del self.sim
+        super().close()

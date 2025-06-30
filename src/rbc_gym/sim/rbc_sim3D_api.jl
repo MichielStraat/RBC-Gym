@@ -158,6 +158,18 @@ function get_nusselt()
     return 1 + (q_conv / κ )
 end
 
+"""
+Shutdown the RBC simulation and free memory
+"""
+function shutdown_simulation()
+    global simulation = nothing
+    global model = nothing
+
+    GC.gc()  # Force Julia garbage collection
+
+    @info "✅ Julia simulation shut down and GPU memory freed!"
+end
+
 
 # Export functions
-export initialize_simulation, step_simulation, get_state
+export initialize_simulation, step_simulation, get_state, shutdown_simulation
