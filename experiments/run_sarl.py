@@ -47,12 +47,12 @@ def main() -> None:
 
     # print(model.policy)
 
-    # callback = RenderCallback(check_freq=1)
+    callback = RenderCallback(check_freq=1)
 
     model.learn(
-        total_timesteps=20,
+        total_timesteps=10,
         progress_bar=False,
-        #callback=callback
+        callback=callback
     )
 
 if __name__ == "__main__":
