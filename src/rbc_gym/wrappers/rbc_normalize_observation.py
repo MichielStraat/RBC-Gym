@@ -27,9 +27,9 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
             # TODO this is for the 3D case, the relationship for the 2D case should still be done.
             logging.info("U_limit is None, calculating U_limit based on Ra for 3D RBC. TODO implement for 2D RBC.")
             Ra = env.unwrapped.Ra
-            w_inf = 0.96110603
-            Ra_c = 647.36505318
-            n = 1.07038408
+            w_inf = 0.96549382
+            Ra_c = 654.37063331
+            n = 1.06741877
             U_limit = w_inf * Ra**n / (Ra**n + Ra_c**n)
         self.U_limit = U_limit
         self.observation_space = gym.spaces.Box(

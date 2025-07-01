@@ -50,12 +50,12 @@ def main() -> None:
     # callback = RenderCallback(check_freq=1)
 
     model.learn(
-        total_timesteps=500,
-        progress_bar=True,
+        total_timesteps=20,
+        progress_bar=False,
         #callback=callback
     )
 
 if __name__ == "__main__":
     # On macOS and Windows the default “spawn” start‑method requires this guard.
-    mp.set_start_method("spawn", force=True)
+    # mp.set_start_method("spawn", force=True)
     main()
