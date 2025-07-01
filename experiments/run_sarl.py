@@ -22,7 +22,7 @@ def main() -> None:
         render_mode="rgb_array",
         heater_duration=0.375,
         heater_limit=0.9,
-        Ra=2500,
+        rayleigh_number=2500,
     )
     # Environment wrappers
     env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
