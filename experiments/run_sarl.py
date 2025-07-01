@@ -23,6 +23,7 @@ def main() -> None:
         heater_duration=0.375,
         heater_limit=0.9,
         rayleigh_number=2500,
+        episode_length=10,
     )
     # Environment wrappers
     env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
