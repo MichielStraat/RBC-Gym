@@ -3,7 +3,9 @@ from typing import Any
 import gymnasium as gym
 import numpy as np
 from rbc_gym.envs import RayleighBenardConvection2DEnv, RayleighBenardConvection3DEnv
+import logging
 
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 class RBCNormalizeObservation(gym.ObservationWrapper):
     """Normalize the observation to image range [0, maxval] with clipping"""
@@ -13,7 +15,7 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
         env: RayleighBenardConvection2DEnv | RayleighBenardConvection3DEnv,
         heater_limit: float,
         maxval: int = 1,
-        U_limit = 1.3,
+        U_limit: int | None = 1.3,
         excursion_eps: float = 0.3,  # how many percent of the range to allow excursions outside the min/max values
         clip_obs: bool = False,
     ):
@@ -21,6 +23,14 @@ class RBCNormalizeObservation(gym.ObservationWrapper):
         self.maxval = maxval
         shape = env.observation_space.shape
         self.excursion_eps = excursion_eps
+        if U_limit is None and isinstance(env, RayleighBenardConvection3DEnv):
+            # TODO this is for the 3D case, the relationship for the 2D case should still be done.
+            logging.info("U_limit is None, calculating U_limit based on Ra for 3D RBC. TODO implement for 2D RBC.")
+            Ra = env.unwrapped.Ra
+            w_inf = 0.96110603
+            Ra_c = 647.36505318
+            n = 1.07038408
+            U_limit = w_inf * Ra**n / (Ra**n + Ra_c**n)
         self.U_limit = U_limit
         self.observation_space = gym.spaces.Box(
             low=-self.maxval * (1 + excursion_eps),

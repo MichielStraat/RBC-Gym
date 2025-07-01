@@ -16,7 +16,14 @@ from stable_baselines3.ppo import PPO
 from rbc_gym.callbacks.callbacks import RenderCallback
 
 def main() -> None:
-    env = gym.make("rbc_gym/RayleighBenardConvection3D-v0", render_mode="human", heater_duration=0.375)
+    env = gym.make(
+        "rbc_gym/RayleighBenardConvection3D-v0",
+        checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+        render_mode="rgb_array",
+        heater_duration=0.375,
+        heater_limit=0.9,
+        Ra=2500,
+    )
     # Environment wrappers
     env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
     # env = RBCNormalizeReward(env) # TODO implement reward normalization for 3D for other Ra values, but probably not important right now if you don't use reward shaing
@@ -40,12 +47,12 @@ def main() -> None:
 
     # print(model.policy)
 
-    callback = RenderCallback(check_freq=1)
+    # callback = RenderCallback(check_freq=1)
 
     model.learn(
         total_timesteps=500,
         progress_bar=True,
-        callback=callback
+        #callback=callback
     )
 
 if __name__ == "__main__":
