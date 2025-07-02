@@ -28,8 +28,9 @@ logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
-    parser.add_argument("--output_dir", type=str, default=f"results/default_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}", help="Output directory")
-    return parser.parse_args()
+    datestring = datetime.now().strftime('%Y%m%d_%H%M%S')
+    parser.add_argument("--output_dir", type=str, default=f"results/run_local_{datestring}", help="Output directory")
+    return parser.parse_args(), datestring
 
 
 def load_config(config_path):
@@ -38,7 +39,7 @@ def load_config(config_path):
 
 
 def main():
-    args = parse_args()
+    args, datestring = parse_args()
 
     # ----------------------------------------
     # Load config or defaults
@@ -113,11 +114,21 @@ def main():
     # ----------------------------------------
     # Initialize W&B
     # ----------------------------------------
-    # wandb.init(
-    #     project="rbc-gym",
-    #     config=config,
-    #     dir=args.output_dir
-    # )
+    job_id = os.environ.get(
+        "SLURM_JOB_ID",
+        "local_" + datestring
+    )
+    wandb.init(
+        project="rbc-3D-rl",
+        name= f"run_{job_id}",
+        config=config,
+        dir=args.output_dir
+    )
+    wandb.define_metric(
+        "nusselt",
+        summary="mean",
+        step_metric="t",
+    )
 
     total_timesteps = rollout_buffer_size * 1
     model.learn(
@@ -129,4 +140,3 @@ def main():
 if __name__ == "__main__":
     # mp.set_start_method("spawn", force=True)
     main()
-
