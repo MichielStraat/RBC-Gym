@@ -48,7 +48,20 @@ def main():
         config = load_config(args.config)
         logging.info(f"Loaded config from {args.config}: {config}")
     else:
-        config = {}
+        # construct a config dictionary with default values
+        config = {
+            'rl_n_steps': 4,
+            'rl_n_envs': 1,
+            'rl_batch_size': 4,
+            'rl_n_epochs': 10,
+            'rl_ent_coef': 0.01,
+            'rl_stat_window_size': 50,
+            'rl_nr_iterations': 1,
+            'rbc_heater_duration': 0.375,
+            'rbc_heater_limit': 0.9,
+            'rbc_rayleigh_number': 2500,
+            'rbc_episode_length': 10
+        }
         logging.info(f"No config file provided or file does not exist. Using a default config in script.")
 
     # Extract parameters from config
@@ -58,6 +71,7 @@ def main():
     rl_n_epochs = config.get('rl_n_epochs', 10)
     rl_ent_coef = config.get('rl_ent_coef', 0.01)
     rl_stat_window_size = config.get('rl_stat_window_size', 50)
+    rl_nr_iterations = config.get('rl_nr_iterations', 1)
     rbc_heater_duration = config.get('rbc_heater_duration', 0.375)
     rbc_heater_limit = config.get('rbc_heater_limit', 0.9)
     rbc_rayleigh_number = config.get('rbc_rayleigh_number', 2500)
@@ -130,7 +144,11 @@ def main():
         step_metric="t",
     )
 
-    total_timesteps = rollout_buffer_size * 1
+    # Define callsbacks
+    # TODO implement
+
+
+    total_timesteps = rollout_buffer_size * rl_nr_iterations
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
