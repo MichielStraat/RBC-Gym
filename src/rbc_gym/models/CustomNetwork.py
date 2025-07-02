@@ -69,7 +69,6 @@ class CustomNetwork(nn.Module):
     def forward_critic(self, x: torch.Tensor) -> torch.Tensor:
         # The input is flattened, so 8*4*8*8
         x = x.view(x.size(0), 8, 4, 8, 8)
-        print(x.shape)
         # Forward pass through the critic network
         return self.value_net(x)
   
