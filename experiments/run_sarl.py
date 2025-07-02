@@ -1,3 +1,10 @@
+import argparse
+import logging
+import multiprocessing as mp
+import yaml
+import os
+from datetime import datetime
+
 import rbc_gym  # noqa: F401
 from rbc_gym.wrappers import (
     RBCNormalizeObservation,
@@ -6,98 +13,120 @@ from rbc_gym.wrappers import (
 )
 
 import torch
-import multiprocessing as mp
-
-# Reinforcement learning related imports
 import gymnasium as gym
 from gymnasium.wrappers import FlattenObservation, FrameStackObservation
 from rbc_gym.models.CustomNetwork import CustomActorCriticPolicy
 from rbc_gym.models.CNN import FluidCNNExtractor
 from stable_baselines3.ppo import PPO
 from rbc_gym.callbacks.callbacks import RenderCallback
-import logging
+import wandb
 
-# Set up logging
-logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
+# Setup logging
+logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
 
-def main() -> None:
 
-    # env parameters
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
+    parser.add_argument("--output_dir", type=str, default=f"results/default_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}", help="Output directory")
+    return parser.parse_args()
 
+
+def load_config(config_path):
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+
+def main():
+    args = parse_args()
+
+    # ----------------------------------------
+    # Load config or defaults
+    # ----------------------------------------
+    if args.config and os.path.isfile(args.config):
+        config = load_config(args.config)
+        logging.info(f"Loaded config from {args.config}: {config}")
+    else:
+        config = {}
+        logging.info(f"No config file provided or file does not exist. Using a default config in script.")
+
+    # Extract parameters from config
+    rl_n_steps = config.get('rl_n_steps', 4)
+    rl_n_envs = config.get('rl_n_envs', 1)
+    rl_batch_size = config.get('rl_batch_size', 4)
+    rl_n_epochs = config.get('rl_n_epochs', 10)
+    rl_ent_coef = config.get('rl_ent_coef', 0.01)
+    rl_stat_window_size = config.get('rl_stat_window_size', 50)
+    rbc_heater_duration = config.get('rbc_heater_duration', 0.375)
+    rbc_heater_limit = config.get('rbc_heater_limit', 0.9)
+    rbc_rayleigh_number = config.get('rbc_rayleigh_number', 2500)
+    rbc_episode_length = config.get('rbc_episode_length', 10)
+
+    # derived parameters
+    rollout_buffer_size = rl_n_steps * rl_n_envs  # Size of the rollout buffer, i.e., number of steps that are collected before updating the policy.
+    assert( rollout_buffer_size % rl_batch_size == 0), "It's recommended that rollout_buffer_size be divisible by batch_size"
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # ----------------------------------------
+    # Initialize environment
+    # ----------------------------------------
     env = gym.make(
         "rbc_gym/RayleighBenardConvection3D-v0",
         checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
         render_mode="rgb_array",
-        heater_duration=0.375,
-        heater_limit=0.9,
-        rayleigh_number=2500,
-        episode_length=10,
+        heater_duration=rbc_heater_duration,
+        heater_limit=rbc_heater_limit,
+        rayleigh_number=rbc_rayleigh_number,
+        episode_length=rbc_episode_length,
     )
-    # Environment wrappers
+
     env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
-    # env = RBCNormalizeReward(env) # TODO implement reward normalization for 3D for other Ra values, but probably not important right now if you don't use reward shaing
-    # env = RBCRewardShaping(env, shaping_weight=0.1)   # TODO implement correctly for 3D, don't use for now
-    # env = FlattenObservation(env) # NOTE should not be used with CNN feature extractor
-    # env = FrameStackObservation(env, 4) # TODO include later
+    # env = RBCNormalizeReward(env)
+    # env = RBCRewardShaping(env, shaping_weight=0.1)
+    # env = FlattenObservation(env)
+    # env = FrameStackObservation(env, 4)
 
     policy_kwargs = dict(
         features_extractor_class=FluidCNNExtractor,
-        features_extractor_kwargs=dict(features_dim=8*4*8*8),
+        features_extractor_kwargs=dict(features_dim=8 * 4 * 8 * 8),
         share_features_extractor=True,
     )
-
-    # PPO/RL parameters
-
-    n_steps = 4  # Number of steps per environment in a rollout (default is 2048 in on_policy_algorithm)
-    batch_size = 4  # Minibatch size for each gradient update after a rollout
-    n_epochs = 10  # Number of epochs to update the policy for each rollout
-    n_envs = 1  # Number of parallel environments TODO UPDATE!!!!
-    rollout_buffer_size = n_steps * n_envs  # Size of the rollout buffer, i.e., number of steps that are collected before updating the policy
-    stat_window_size = 50  # Size of the window for computing statistics (e.g., mean, std) of the reward
-    ent_coef = 0.01  # Entropy coefficient for the loss function
 
     model = PPO(
         CustomActorCriticPolicy,
         env,
         policy_kwargs=policy_kwargs,
-        ent_coef=ent_coef,
-        stats_window_size=stat_window_size,
-        n_steps=n_steps,  # Number of steps per environment per update given no truncation of the episode? TODO what should this be?
-        batch_size=batch_size,  # NOTE TODO We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.
-        n_epochs=n_epochs,  # Number of epochs to update the policy for each rollout
+        ent_coef=rl_ent_coef,
+        stats_window_size=rl_stat_window_size,
+        n_steps=rl_n_steps,
+        batch_size=rl_batch_size,
+        n_epochs=rl_n_epochs,
         verbose=1,
-        device="cuda" if torch.cuda.is_available() else "cpu"
+        device="cuda" if torch.cuda.is_available() else "cpu",
     )
-
-    # Summary of all the different "step" attributes:
-    # model.n_steps: Number of steps per environment per update (default 2048)
-    # `RolloutBuffer` is of size `n_steps * n_envs
-    # model.batch_size: Minibatch size for each gradient update after a rollout (default 64)
-    # model.n_epochs: Number of epochs to update the policy for each rollout (default 10)
-    # BTW: f"We recommend using a `batch_size` that is a factor of `n_steps * n_envs`.\n"
-    # total_timesteps, given to model.learn():
-        # we already have defined the size of the rolloutbuffer, we already have the batch size. So how many times do we want to collect rollouts?
-        # the model.num_timesteps increases in increments of n_envs for each step in the rollout collection.
-        # As the check self.num_timsteps < total_timesteps is only done before each rollout collection,
-        # total_timesteps is a lower bound for the number of timesteps collected, and can be on the order of 
-        # a full rollout collection n_steps * n_envs larger.
-
 
     logging.info(
-        f"model.n_steps {model.n_steps}, meaning so many steps are taken during rollout collection "
-        f"amounting to n_steps * n_envs = {rollout_buffer_size} timesteps in total per rollout."
+        f"model.n_steps: {model.n_steps} and model.n_envs: {model.n_envs} → Rollout buffer: {rollout_buffer_size} timesteps per rollout"
     )
 
-    # callback = RenderCallback(check_freq=1)
+    # ----------------------------------------
+    # Initialize W&B
+    # ----------------------------------------
+    # wandb.init(
+    #     project="rbc-gym",
+    #     config=config,
+    #     dir=args.output_dir
+    # )
 
-    total_timesteps = rollout_buffer_size * 1  # Total number of timesteps collected in the training process
+    total_timesteps = rollout_buffer_size * 1
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
-        # callback=callback
     )
 
+
 if __name__ == "__main__":
-    # On macOS and Windows the default “spawn” start‑method requires this guard.
     # mp.set_start_method("spawn", force=True)
     main()
+
