@@ -2,7 +2,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.callbacks import LogEveryNTimesteps
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 import wandb
-
+from wandb.integration.sb3 import WandbCallback
 import os
 
 
@@ -24,6 +24,8 @@ class RenderCallback(BaseCallback):
             print('Rendering environment at step:', self.n_calls)
         return True
     
+
+
 
 # class LogEveryNTimestepsWandb(LogEveryNTimesteps):
 #     """

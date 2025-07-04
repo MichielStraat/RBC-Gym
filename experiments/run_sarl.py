@@ -18,8 +18,10 @@ from gymnasium.wrappers import FlattenObservation, FrameStackObservation
 from rbc_gym.models.CustomNetwork import CustomActorCriticPolicy
 from rbc_gym.models.CNN import FluidCNNExtractor
 from stable_baselines3.ppo import PPO
+from stable_baselines3.common.callbacks import EvalCallback
 from rbc_gym.callbacks.callbacks import RenderCallback
 import wandb
+from wandb.integration.sb3 import WandbCallback
 
 # Setup logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -96,6 +98,16 @@ def main():
         episode_length=rbc_episode_length,
     )
 
+    eval_env = gym.make(
+        "rbc_gym/RayleighBenardConvection3D-v0",
+        checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5", # TODO same checkpoint for evaluation for now
+        render_mode="rgb_array",
+        heater_duration=rbc_heater_duration,
+        heater_limit=rbc_heater_limit,
+        rayleigh_number=rbc_rayleigh_number,
+        episode_length=rbc_episode_length,
+    )
+
     env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
     # env = RBCNormalizeReward(env)
     # env = RBCRewardShaping(env, shaping_weight=0.1)
@@ -118,6 +130,7 @@ def main():
         batch_size=rl_batch_size,
         n_epochs=rl_n_epochs,
         verbose=1,
+        tensorboard_log=args.output_dir,
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
@@ -136,6 +149,7 @@ def main():
         project="rbc-3D-rl",
         name= f"run_{job_id}",
         config=config,
+        sync_tensorboard=True,
         dir=args.output_dir
     )
     wandb.define_metric(
@@ -146,12 +160,27 @@ def main():
 
     # Define callsbacks
     # TODO implement
-
+    wandb_callback = WandbCallback(
+        model_save_path=os.path.join(args.output_dir, "models"),
+        verbose=2
+    )
+    eval_callback = EvalCallback(
+        eval_env,
+        n_eval_episodes=1,
+        eval_freq=rl_n_steps,  # Evaluate every rollout  # TODO is this in timesteps?
+        deterministic=True,
+        log_path=os.path.join(args.output_dir, 'eval'),
+        best_model_save_path=os.path.join(args.output_dir, 'models'),
+        render=False,  # Render during evaluation
+        verbose=2,
+        # callback_on_new_best=wandb_callback,  # Log to W&B when a new best model is found,
+    )
 
     total_timesteps = rollout_buffer_size * rl_nr_iterations
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
+        callback=[wandb_callback, eval_callback],
     )
 
 
