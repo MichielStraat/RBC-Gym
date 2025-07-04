@@ -17,9 +17,12 @@ import gymnasium as gym
 from gymnasium.wrappers import FlattenObservation, FrameStackObservation
 from rbc_gym.models.CustomNetwork import CustomActorCriticPolicy
 from rbc_gym.models.CNN import FluidCNNExtractor
+
 from stable_baselines3.ppo import PPO
 from stable_baselines3.common.callbacks import EvalCallback
-from rbc_gym.callbacks.callbacks import RenderCallback
+from stable_baselines3.common.env_util import make_vec_env
+
+from rbc_gym.callbacks.callbacks import NusseltCallback
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
@@ -175,12 +178,13 @@ def main():
         verbose=2,
         # callback_on_new_best=wandb_callback,  # Log to W&B when a new best model is found,
     )
+    nusselt_callback = NusseltCallback()
 
     total_timesteps = rollout_buffer_size * rl_nr_iterations
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
-        callback=[wandb_callback, eval_callback],
+        callback=[wandb_callback, eval_callback, nusselt_callback],
     )
 
 

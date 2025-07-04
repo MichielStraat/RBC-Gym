@@ -1,9 +1,10 @@
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.callbacks import LogEveryNTimesteps
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
-import wandb
-from wandb.integration.sb3 import WandbCallback
 import os
+from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.vec_env import VecEnv
+import numpy as np
 
 
 class RenderCallback(BaseCallback):
@@ -25,65 +26,83 @@ class RenderCallback(BaseCallback):
         return True
     
 
+class NusseltCallback(BaseCallback):
+    def __init__(
+        self,
+        freq: int = 1,
+        verbose: int = 0,
+    ):
+        super().__init__(verbose)
 
-
-# class LogEveryNTimestepsWandb(LogEveryNTimesteps):
-#     """
-#     Log data every ``n_steps`` timesteps
-
-#     :param n_steps: Number of timesteps between two trigger.
-#     """
-
-#     def __init__(self, n_steps: int):
-#         super().__init__(n_steps=n_steps)
-
-
-#     def _log_data(self, _locals: dict[str, Any], _globals: dict[str, Any]) -> bool:
-#         super()._log_data(_locals, _globals)
-#         # additionally log to wandb
-#         return True
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos")
+        for info in infos:
+            self.logger.record_mean("rollout/nusselt_mean", info["nusselt"])
+            # TODO: log any other metric, such as:
+            # self.logger.record_mean("rollout/cell_dist_mean", info["cell_dist"])
+        return True
     
 
-# class NusseltCallback(BaseCallback):
-#     def __init__(
-#         self,
-#         freq: int = 1,
-#         verbose: int = 0,
-#     ):
-#         super().__init__(verbose)
+class CustomEvalCallback(EvalCallback):
+    def __init__(self, *args, **kwargs):
+        super(CustomEvalCallback, self).__init__(*args, **kwargs)
 
-#     def _on_step(self) -> bool:
-#         infos = self.locals.get("infos")
-#         for info in infos:
-#             self.logger.record_mean("rollout/nusselt_obs_mean", info["nusselt_obs"])
-#             self.logger.record_mean("rollout/nusselt_mean", info["nusselt"])
-#             self.logger.record_mean("rollout/cell_dist_mean", info["cell_dist"])
-#         return True
+    def _on_step(self) -> bool:
+        """
+        This is called repeatedly during the eval episodes.
+        """
+        infos = self.locals.get("infos")
+        if infos is not None:
+            for info in infos:
+                # TODO later on log for each episode in the VectorEnv
+                self.logger.record_mean("eval/nusselt_mean", info["nusselt"])
+        return super()._on_step()
     
-# class LogNusseltNumberCallback(CallbackBase):
-#     def __init__(
-#         self,
-#         interval: Optional[int] = 1,
-#         nr_episodes: int = 1,
-#     ):
-#         super().__init__(interval=interval)
-#         for idx in range(nr_episodes):
-#             wandb.define_metric(f"ep{idx}/time")
-#             wandb.define_metric(
-#                 f"ep{idx}/nusselt_state", step_metric=f"ep{idx}/time", summary="mean"
-#             )
-#             wandb.define_metric(
-#                 f"ep{idx}/nusselt_obs", step_metric=f"ep{idx}/time", summary="mean"
-#             )
 
-#     def __call__(self, env, obs, reward, info, episode_idx):
-#         if super().__call__(env, obs, reward, info):
-#             # state = env.simulation.state
-#             # nusselt = env.simulation.compute_nusselt(state)
-#             wandb.log(
-#                 {
-#                     f"ep{episode_idx}/time": info["t"],
-#                     f"ep{episode_idx}/nusselt_state": info["nusselt"],
-#                     f"ep{episode_idx}/nusselt_obs": info["nusselt_obs"],
-#                 }
-#             )
+class EvaluationCallback(BaseCallback):
+    def __init__(
+        self,
+        env: VecEnv,
+        save_model: bool = False,
+        save_path: Optional[str] = None,
+        freq: int = 1,
+        verbose: int = 0,
+    ):
+        super().__init__(verbose)
+
+        self.freq = freq
+        self.env = env
+        self.save_model = save_model
+        self.save_path = save_path
+        self.best_mean_reward = -np.inf
+
+    def _on_step(self) -> bool:
+        return True
+
+    def _on_rollout_start(self) -> None:
+        if self.n_calls % self.freq == 0:
+            self.logger.info(f"Evaluating model at {self.num_timesteps} timesteps")
+            nr_envs = self.env.num_envs
+            rewards_list = []
+
+            # env loop
+            obs = self.env.reset()
+            done = np.zeros(nr_envs)
+            while not done.any():
+                # env step
+                actions, _ = self.model.predict(obs, deterministic=True)
+                _, rewards, done, infos = self.env.step(actions)
+                for id in range(nr_envs):
+                    rewards_list.append(rewards[id])
+                    self.logger.record_mean("eval/reward", rewards[id])
+                    self.logger.record_mean("eval/nusselt", infos[id]["nusselt"])
+                    self.logger.record_mean("eval/nusselt_obs", infos[id]["nusselt_obs"])
+
+            # check for new best model
+            mean_reward = np.mean(rewards_list)
+            if mean_reward > self.best_mean_reward:
+                self.best_mean_reward = mean_reward
+                self.logger.info(f"New best model with mean reward {mean_reward}")
+                if self.save_model:
+                    self.model.save(os.path.join(self.save_path, "best_model"))
+  
