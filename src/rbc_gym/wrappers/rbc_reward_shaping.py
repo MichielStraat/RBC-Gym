@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks
 from rbc_gym.envs.rbc2D import RBCField
+from typing import Any, Dict, Optional, Tuple
 
 
 class RBCRewardShaping(gym.Wrapper):
@@ -37,7 +38,11 @@ class RBCRewardShaping(gym.Wrapper):
             )
             (self.line_cells,) = self.ax_anim.plot([], [], "x")
 
-    def reset(self, seed, options):
+
+    def reset(self,
+        seed: int | None = None,
+        options: Dict[str, Any] | None = None
+        ) -> Tuple[Any, Dict[str, Any]]:
         # NOTE: for debugging the cell distance computation
         if self.debug_cell_dist:
             self.update()

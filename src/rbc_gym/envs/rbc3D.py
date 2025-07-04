@@ -49,6 +49,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         heater_limit: Optional[float] = 0.9,
         heater_duration: Optional[float] = 0.125,
         episode_length: Optional[int] = 300,
+        dt_solver: Optional[float] = 0.01,
         use_gpu: Optional[bool] = False,
         checkpoint: Optional[str] = None,
         render_mode: Optional[str] = None,
@@ -66,6 +67,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.pr = prandtl_number
         self.domain = domain
         self.episode_length = episode_length
+        self.dt_solver = dt_solver
         self.state_shape = state_shape
         self.temperature_difference = temperature_difference
         self.heater_segments = heater_segments
@@ -157,6 +159,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             heaters=self.heater_segments,
             heater_limit=self.heater_limit,
             dt=self.heater_duration,
+            dt_solver=self.dt_solver,
             seed=self.np_random_seed,
             checkpoint_path=path,
             use_gpu=self.use_gpu,
@@ -289,3 +292,27 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
         if self._plotter is not None:
             self._plotter.close()
+
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = True
+
+        # ✅ Shut down the Julia simulation
+        try:
+            self.sim.shutdown_simulation()
+            self.logger.info("✅ Julia simulation shut down successfully.")
+
+            self.sim.GC.gc()
+            self.logger.info("✅ Forced Julia GC from Python side.")
+        except Exception as e:
+            self.logger.warning(f"Could not shut down Julia simulation cleanly: {e}")
+
+        # ✅ Shut down the PyVista plotter
+        if self._plotter is not None:
+            self._plotter.close()
+            self.logger.info("✅ Closed PyVista plotter.")
+
+        del self.sim
+        super().close()

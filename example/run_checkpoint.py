@@ -8,7 +8,7 @@ logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 env = gym.make(
     "rbc_gym/RayleighBenardConvection2D-v0",
-    checkpoint="data/checkpoints/checkpoints10000.h5",
+    checkpoint="data/checkpoints/train/ckpt_ra10000.h5",
     render_mode="human",
 )
 

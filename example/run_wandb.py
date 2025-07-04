@@ -17,7 +17,7 @@ env = gym.make(
     render_mode="rgb_array",
     rayleigh_number=2500,
     heater_duration=0.25,
-    episode_length=300,
+    episode_length=10,
     checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
 )
 
