@@ -17,6 +17,7 @@ class RBCField(IntEnum):
     T = 0
     UX = 1
     UY = 2
+    P = 3
 
 
 def colormap(value, vmin=1, vmax=2, colormap="turbo"):
@@ -40,6 +41,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         heater_segments: Optional[int] = 12,
         heater_limit: Optional[float] = 0.75,
         heater_duration: Optional[float] = 1.5,
+        pressure: Optional[bool] = False,
         use_gpu: Optional[bool] = False,
         checkpoint: Optional[str] = None,
         render_mode: Optional[str] = None,
@@ -61,6 +63,8 @@ class RayleighBenardConvection2DEnv(gym.Env):
         self.heater_segments = heater_segments
         self.heater_limit = heater_limit
         self.heater_duration = heater_duration
+        self.include_pressure = pressure
+        self.episode_steps = int(episode_length / heater_duration)
 
         # Print environment configuration
         self.logger = logging.getLogger(__name__)
@@ -73,29 +77,30 @@ class RayleighBenardConvection2DEnv(gym.Env):
         )
 
         # Observation Space
-        lows = np.stack(
-            [
-                np.ones(self.observation_shape) * 1,
-                np.ones(self.observation_shape) * (-np.inf),
-                np.ones(self.observation_shape) * (-np.inf),
-            ],
-            dtype=np.float32,
-            axis=0,
-        )
-        highs = np.stack(
-            [
-                np.ones(self.observation_shape) * 2 + self.heater_limit,
-                np.ones(self.observation_shape) * np.inf,
-                np.ones(self.observation_shape) * np.inf,
-            ],
-            dtype=np.float32,
-            axis=0,
-        )
+        channels = 3
+        lows = [
+            np.ones(self.observation_shape) * 1,
+            np.ones(self.observation_shape) * (-np.inf),
+            np.ones(self.observation_shape) * (-np.inf),
+        ]
+        highs = [
+            np.ones(self.observation_shape) * 2 + self.heater_limit,
+            np.ones(self.observation_shape) * np.inf,
+            np.ones(self.observation_shape) * np.inf,
+        ]
+
+        if self.include_pressure:
+            channels += 2
+            lows.append(np.ones(self.observation_shape) * (-np.inf))
+            lows.append(np.ones(self.observation_shape) * (-np.inf))
+            highs.append(np.ones(self.observation_shape) * np.inf)
+            highs.append(np.ones(self.observation_shape) * np.inf)
+
         self.observation_space = gym.spaces.Box(
-            lows,
-            highs,
+            np.stack(lows, dtype=np.float32, axis=0),
+            np.stack(highs, dtype=np.float32, axis=0),
             shape=(
-                3,
+                channels,
                 self.observation_shape[0],
                 self.observation_shape[1],
             ),
@@ -178,14 +183,16 @@ class RayleighBenardConvection2DEnv(gym.Env):
 
     def __get_state(self) -> Any:
         state = np.array(self.sim.get_state(), dtype=np.float32)
+        if not self.include_pressure:
+            state = state[:3, :, :]
         state = state.transpose(0, 2, 1)  # julia uses column-major order
-        state = np.flip(state, axis=1)
         return state
 
     def __get_obs(self) -> Any:
         obs = np.array(self.sim.get_observation(), dtype=np.float32)
+        if not self.include_pressure:
+            obs = obs[:3, :, :]
         obs = obs.transpose(0, 2, 1)  # julia uses column-major order
-        obs = np.flip(obs, axis=1)
         return obs
 
     def __get_reward(self) -> float:
@@ -228,6 +235,7 @@ class RayleighBenardConvection2DEnv(gym.Env):
         # Data
         data = self.__get_state()[RBCField.T]
         data = np.transpose(data)
+        data = np.flip(data, axis=1)  # orgin in pygame is top left
         data = colormap(data, vmin=1, vmax=2 + self.heater_limit)
 
         if self.render_mode == "human":
