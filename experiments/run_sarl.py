@@ -21,6 +21,7 @@ from rbc_gym.models.CNN import FluidCNNExtractor
 from stable_baselines3.ppo import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from rbc_gym.callbacks.callbacks import NusseltCallback
 import wandb
@@ -91,31 +92,57 @@ def main():
     # ----------------------------------------
     # Initialize environment
     # ----------------------------------------
-    env = gym.make(
+    # env = gym.make(
+    #     "rbc_gym/RayleighBenardConvection3D-v0",
+    #     checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+    #     render_mode="rgb_array",
+    #     heater_duration=rbc_heater_duration,
+    #     heater_limit=rbc_heater_limit,
+    #     rayleigh_number=rbc_rayleigh_number,
+    #     episode_length=rbc_episode_length,
+    # )
+
+    def wrap_environment(env):
+        """Function to wrap the environment with necessary wrappers."""
+        env = RBCNormalizeObservation(env, heater_limit=rbc_heater_limit, maxval=1)
+        # env = RBCNormalizeReward(env)
+        # env = RBCRewardShaping(env, shaping_weight=0.1)
+        # env = FlattenObservation(env)
+        # env = FrameStackObservation(env, 4)
+        return env
+    
+    vec_env = make_vec_env(
         "rbc_gym/RayleighBenardConvection3D-v0",
-        checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
-        render_mode="rgb_array",
-        heater_duration=rbc_heater_duration,
-        heater_limit=rbc_heater_limit,
-        rayleigh_number=rbc_rayleigh_number,
-        episode_length=rbc_episode_length,
+        n_envs=rl_n_envs,
+        vec_env_cls=SubprocVecEnv,  # Use SubprocVecEnv for parallel environments
+        monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'train'),
+        wrapper_class=wrap_environment,
+        env_kwargs=dict(
+            checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+            render_mode="rgb_array",
+            heater_duration=rbc_heater_duration,
+            heater_limit=rbc_heater_limit,
+            rayleigh_number=rbc_rayleigh_number,
+            episode_length=rbc_episode_length,
+        ),
     )
 
-    eval_env = gym.make(
+    vec_env_eval = make_vec_env(
         "rbc_gym/RayleighBenardConvection3D-v0",
-        checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5", # TODO same checkpoint for evaluation for now
-        render_mode="rgb_array",
-        heater_duration=rbc_heater_duration,
-        heater_limit=rbc_heater_limit,
-        rayleigh_number=rbc_rayleigh_number,
-        episode_length=rbc_episode_length,
+        n_envs=rl_n_envs,
+        vec_env_cls=SubprocVecEnv,  # Use SubprocVecEnv for parallel environments
+        monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'eval'),
+        wrapper_class=wrap_environment,
+        env_kwargs=dict(
+            checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+            render_mode="rgb_array",
+            heater_duration=rbc_heater_duration,
+            heater_limit=rbc_heater_limit,
+            rayleigh_number=rbc_rayleigh_number,
+            episode_length=rbc_episode_length,
+        ),
     )
 
-    env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
-    # env = RBCNormalizeReward(env)
-    # env = RBCRewardShaping(env, shaping_weight=0.1)
-    # env = FlattenObservation(env)
-    # env = FrameStackObservation(env, 4)
 
     policy_kwargs = dict(
         features_extractor_class=FluidCNNExtractor,
@@ -125,7 +152,7 @@ def main():
 
     model = PPO(
         CustomActorCriticPolicy,
-        env,
+        vec_env,
         policy_kwargs=policy_kwargs,
         ent_coef=rl_ent_coef,
         stats_window_size=rl_stat_window_size,
@@ -156,10 +183,11 @@ def main():
         dir=args.output_dir
     )
     wandb.define_metric(
-        "nusselt",
-        summary="mean",
-        step_metric="t",
+        "rollout/nusselt_mean",
+        summary="min",
+        step_metric="global_step",
     )
+    wandb.define_metric("*", step_metric="global_step")
 
     # Define callsbacks
     # TODO implement
@@ -168,7 +196,7 @@ def main():
         verbose=2
     )
     eval_callback = EvalCallback(
-        eval_env,
+        vec_env_eval,
         n_eval_episodes=1,
         eval_freq=rl_n_steps,  # Evaluate every rollout  # TODO is this in timesteps?
         deterministic=True,
@@ -189,5 +217,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # mp.set_start_method("spawn", force=True)
+    mp.set_start_method("spawn", force=True)
     main()

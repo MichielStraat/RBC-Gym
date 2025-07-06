@@ -42,21 +42,6 @@ class NusseltCallback(BaseCallback):
             # self.logger.record_mean("rollout/cell_dist_mean", info["cell_dist"])
         return True
     
-
-class CustomEvalCallback(EvalCallback):
-    def __init__(self, *args, **kwargs):
-        super(CustomEvalCallback, self).__init__(*args, **kwargs)
-
-    def _on_step(self) -> bool:
-        """
-        This is called repeatedly during the eval episodes.
-        """
-        infos = self.locals.get("infos")
-        if infos is not None:
-            for info in infos:
-                # TODO later on log for each episode in the VectorEnv
-                self.logger.record_mean("eval/nusselt_mean", info["nusselt"])
-        return super()._on_step()
     
 
 class EvaluationCallback(BaseCallback):
