@@ -178,11 +178,15 @@ function initialize_model(model, min_b, Lz, Δb, kick)
 end
 
 
-function initialize_from_checkpoint(model, path)
+function initialize_from_checkpoint(model, path, idx)
     h5_file = h5open(path, "r")
 
     n = attrs(h5_file)["num_episodes"]
-    idx = rand(1:n)
+
+    if idx === nothing
+        # If no index is provided, select a random one
+        idx = rand(1:n)
+    end
 
     bb = read(h5_file, "b")[idx,:,:,:]
     uu = read(h5_file, "u")[idx,:,:,:]

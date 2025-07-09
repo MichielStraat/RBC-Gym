@@ -4,6 +4,7 @@ import multiprocessing as mp
 import yaml
 import os
 from datetime import datetime
+import glob
 
 import rbc_gym  # noqa: F401
 from rbc_gym.wrappers import (
@@ -26,6 +27,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from rbc_gym.callbacks.callbacks import NusseltCallback
 import wandb
 from wandb.integration.sb3 import WandbCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 
 # Setup logging
 logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
@@ -36,6 +38,7 @@ def parse_args():
     parser.add_argument("--config", type=str, default=None, help="Path to config.yaml")
     datestring = datetime.now().strftime('%Y%m%d_%H%M%S')
     parser.add_argument("--output_dir", type=str, default=f"results/run_local_{datestring}", help="Output directory")
+    parser.add_argument("--resume_training", action='store_true', help="Resume training from the last checkpoint")
     return parser.parse_args(), datestring
 
 
@@ -118,7 +121,8 @@ def main():
         monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'train'),
         wrapper_class=wrap_environment,
         env_kwargs=dict(
-            checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+            checkpoint=f"data/checkpoints/train/3D_ckpt_ra{rbc_rayleigh_number}.h5",
+            checkpoint_idx=1,  # NOTE temporary use fixed checkpoint for train and val
             render_mode="rgb_array",
             heater_duration=rbc_heater_duration,
             heater_limit=rbc_heater_limit,
@@ -134,7 +138,8 @@ def main():
         monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'eval'),
         wrapper_class=wrap_environment,
         env_kwargs=dict(
-            checkpoint="data/checkpoints/train/3D_ckpt_ra2500.h5",
+            checkpoint=f"data/checkpoints/train/3D_ckpt_ra{rbc_rayleigh_number}.h5",
+            checkpoint_idx=1,  # temporary use fixed checkpoint for train and val  
             render_mode="rgb_array",
             heater_duration=rbc_heater_duration,
             heater_limit=rbc_heater_limit,
@@ -208,11 +213,19 @@ def main():
     )
     nusselt_callback = NusseltCallback()
 
+    model_checkpoint_callback = CheckpointCallback(
+        save_freq=4 * rl_n_steps, # every 4 episodes
+        save_path=os.path.join(args.output_dir, "models", "checkpoints"),
+        name_prefix="rl_model",
+        save_replay_buffer=True, # important for offline RL, probably does nothing for online RL because the replay buffer is empty in that case
+        save_vecnormalize=True,
+    )
+
     total_timesteps = rollout_buffer_size * rl_nr_iterations
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
-        callback=[wandb_callback, eval_callback, nusselt_callback],
+        callback=[wandb_callback, eval_callback, nusselt_callback, model_checkpoint_callback],
     )
 
 

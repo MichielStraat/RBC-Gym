@@ -52,6 +52,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         dt_solver: Optional[float] = 0.01,
         use_gpu: Optional[bool] = False,
         checkpoint: Optional[str] = None,
+        checkpoint_idx: Optional[int] = None,
         render_mode: Optional[str] = None,
     ) -> None:
         """
@@ -61,6 +62,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.closed = False
         self.use_gpu = use_gpu
         self.checkpoint = checkpoint
+        self.checkpoint_idx = checkpoint_idx
 
         # Environment configuration
         self.ra = rayleigh_number
@@ -162,6 +164,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
             dt_solver=self.dt_solver,
             seed=self.np_random_seed,
             checkpoint_path=path,
+            checkpoint_idx=self.checkpoint_idx,  # use random index if not specified
             use_gpu=self.use_gpu,
         )
 
