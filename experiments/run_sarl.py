@@ -23,6 +23,7 @@ from stable_baselines3.ppo import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.monitor import Monitor
 
 from rbc_gym.callbacks.callbacks import NusseltCallback
 import wandb
@@ -30,8 +31,12 @@ from wandb.integration.sb3 import WandbCallback
 from stable_baselines3.common.callbacks import CheckpointCallback
 
 # Setup logging
-logging.basicConfig(format="%(levelname)s: %(message)s", level=logging.INFO)
-
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=logging.INFO,
+)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -55,7 +60,7 @@ def main():
     # ----------------------------------------
     if args.config and os.path.isfile(args.config):
         config = load_config(args.config)
-        logging.info(f"Loaded config from {args.config}: {config}")
+        logger.info(f"Loaded config from {args.config}: {config}")
     else:
         # construct a config dictionary with default values
         config = {
@@ -71,7 +76,7 @@ def main():
             'rbc_rayleigh_number': 2500,
             'rbc_episode_length': 10
         }
-        logging.info(f"No config file provided or file does not exist. Using a default config in script.")
+        logger.info(f"No config file provided or file does not exist. Using a default config in script.")
 
     # Extract parameters from config
     rl_n_steps = config.get('rl_n_steps', 4)
@@ -105,8 +110,9 @@ def main():
     #     episode_length=rbc_episode_length,
     # )
 
-    def wrap_environment(env):
+    def wrap_environment(env, rank, traintestval):
         """Function to wrap the environment with necessary wrappers."""
+        env = Monitor(env, filename=os.path.join(args.output_dir, 'envs_monitor', traintestval, f"env_{rank}"))
         env = RBCNormalizeObservation(env, heater_limit=rbc_heater_limit, maxval=1)
         # env = RBCNormalizeReward(env)
         # env = RBCRewardShaping(env, shaping_weight=0.1)
@@ -114,40 +120,37 @@ def main():
         # env = FrameStackObservation(env, 4)
         return env
     
-    vec_env = make_vec_env(
-        "rbc_gym/RayleighBenardConvection3D-v0",
-        n_envs=rl_n_envs,
-        vec_env_cls=SubprocVecEnv,  # Use SubprocVecEnv for parallel environments
-        monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'train'),
-        wrapper_class=wrap_environment,
-        env_kwargs=dict(
-            checkpoint=f"data/checkpoints/train/3D_ckpt_ra{rbc_rayleigh_number}.h5",
-            checkpoint_idx=1,  # NOTE temporary use fixed checkpoint for train and val
-            render_mode="rgb_array",
-            heater_duration=rbc_heater_duration,
-            heater_limit=rbc_heater_limit,
-            rayleigh_number=rbc_rayleigh_number,
-            episode_length=rbc_episode_length,
-        ),
-    )
+    # create logging directories for the environments
+    os.makedirs(os.path.join(args.output_dir, 'envs_logs', 'train'), exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, 'envs_logs', 'eval'), exist_ok=True)
+    # create a monitor directory for the environments
+    os.makedirs(os.path.join(args.output_dir, 'envs_monitor', 'train'), exist_ok=True)
+    os.makedirs(os.path.join(args.output_dir, 'envs_monitor', 'eval'), exist_ok=True)
 
-    vec_env_eval = make_vec_env(
-        "rbc_gym/RayleighBenardConvection3D-v0",
-        n_envs=rl_n_envs,
-        vec_env_cls=SubprocVecEnv,  # Use SubprocVecEnv for parallel environments
-        monitor_dir=os.path.join(args.output_dir, 'envs_monitor', 'eval'),
-        wrapper_class=wrap_environment,
-        env_kwargs=dict(
-            checkpoint=f"data/checkpoints/train/3D_ckpt_ra{rbc_rayleigh_number}.h5",
-            checkpoint_idx=1,  # temporary use fixed checkpoint for train and val  
-            render_mode="rgb_array",
-            heater_duration=rbc_heater_duration,
-            heater_limit=rbc_heater_limit,
-            rayleigh_number=rbc_rayleigh_number,
-            episode_length=rbc_episode_length,
-        ),
-    )
-
+    def make_env(rank: int, traintestval: str, checkpoint_idx: int, seed: int=0):
+        """Utility function for multiprocessed env."""
+        def _init():
+            env = gym.make(
+                "rbc_gym/RayleighBenardConvection3D-v0",
+                checkpoint=f"data/checkpoints/train/3D_ckpt_ra{rbc_rayleigh_number}.h5", # TODO currently hard-coded for testing purposes
+                checkpoint_idx=checkpoint_idx,  # NOTE temporary use fixed checkpoint for train and val
+                render_mode="rgb_array",
+                heater_duration=rbc_heater_duration,
+                heater_limit=rbc_heater_limit,
+                rayleigh_number=rbc_rayleigh_number,
+                episode_length=rbc_episode_length,
+                log_dir=os.path.join(args.output_dir, 'envs_logs', traintestval),
+                env_id=rank,
+            )
+            # env.seed(seed + rank)
+            return wrap_environment(env, rank, traintestval)
+        return _init
+    
+    # Create vectorized environments
+    # Use SubprocVecEnv for parallel environments
+    
+    vec_env = SubprocVecEnv([make_env(i, 'train', 1) for i in range(rl_n_envs)])
+    vec_env_eval = SubprocVecEnv([make_env(i, 'eval', 1) for i in range(rl_n_envs)])
 
     policy_kwargs = dict(
         features_extractor_class=FluidCNNExtractor,
@@ -169,7 +172,7 @@ def main():
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-    logging.info(
+    logger.info(
         f"model.n_steps: {model.n_steps} and model.n_envs: {model.n_envs} → Rollout buffer: {rollout_buffer_size} timesteps per rollout"
     )
 
@@ -200,21 +203,21 @@ def main():
         model_save_path=os.path.join(args.output_dir, "models"),
         verbose=2
     )
-    eval_callback = EvalCallback(
-        vec_env_eval,
-        n_eval_episodes=1,
-        eval_freq=rl_n_steps,  # Evaluate every rollout  # TODO is this in timesteps?
-        deterministic=True,
-        log_path=os.path.join(args.output_dir, 'eval'),
-        best_model_save_path=os.path.join(args.output_dir, 'models'),
-        render=False,  # Render during evaluation
-        verbose=2,
-        # callback_on_new_best=wandb_callback,  # Log to W&B when a new best model is found,
-    )
+    # eval_callback = EvalCallback(
+    #     vec_env_eval,
+    #     n_eval_episodes=1,
+    #     eval_freq=10 * rl_n_steps,  # Evaluate every 10th rollout  # TODO is this in timesteps?
+    #     deterministic=True,
+    #     log_path=os.path.join(args.output_dir, 'eval'),
+    #     best_model_save_path=os.path.join(args.output_dir, 'models'),
+    #     render=False,  # Render during evaluation
+    #     verbose=2,
+    #     # callback_on_new_best=wandb_callback,  # Log to W&B when a new best model is found,
+    # )
     nusselt_callback = NusseltCallback()
 
     model_checkpoint_callback = CheckpointCallback(
-        save_freq=4 * rl_n_steps, # every 4 episodes
+        save_freq=4 * rl_n_steps, # every 4 rollouts
         save_path=os.path.join(args.output_dir, "models", "checkpoints"),
         name_prefix="rl_model",
         save_replay_buffer=True, # important for offline RL, probably does nothing for online RL because the replay buffer is empty in that case
@@ -225,7 +228,7 @@ def main():
     model.learn(
         total_timesteps=total_timesteps,
         progress_bar=False,
-        callback=[wandb_callback, eval_callback, nusselt_callback, model_checkpoint_callback],
+        callback=[wandb_callback, nusselt_callback, model_checkpoint_callback],
     )
 
 

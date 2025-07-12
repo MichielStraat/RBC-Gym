@@ -7,10 +7,11 @@ from rbc_gym.wrappers import (
 import gymnasium as gym
 from gymnasium.wrappers import FlattenObservation, FrameStackObservation
 from tqdm import tqdm
+from rbc_gym.envs import RayleighBenardConvection2DEnv, RayleighBenardConvection3DEnv
 
 env = gym.make("rbc_gym/RayleighBenardConvection2D-v0", render_mode="human")
 # wrapper to clip the obs space to [0, 1]
-env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit, maxval=1)
+env = RBCNormalizeObservation(env, heater_limit=env.unwrapped.heater_limit)
 # wrapper to normalize the reward to [0, 1]
 env = RBCNormalizeReward(env)
 # wrapper to shape the reward based on the distance of Benard cells

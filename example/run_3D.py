@@ -21,9 +21,7 @@ with tqdm(range(env.unwrapped.episode_length)) as pbar:
 
         pbar.update(info["t"] - pbar.n)
         pbar.set_postfix({"reward": reward, "t": info["t"]})
-        print("coming here, so completed the env.step() function")
         env.render()
-        print("I completed the env.render() function")
         if truncated:
             break
 

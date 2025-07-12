@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import warnings
 import os
+from os.path import join
 from enum import IntEnum
 from typing import Any, Dict, Optional, Tuple
 import matplotlib
@@ -10,6 +11,7 @@ import gymnasium as gym
 import juliacall
 import juliapkg
 import numpy as np
+import traceback
 
 # Optional dependency for 3‑D rendering
 try:
@@ -54,6 +56,8 @@ class RayleighBenardConvection3DEnv(gym.Env):
         checkpoint: Optional[str] = None,
         checkpoint_idx: Optional[int] = None,
         render_mode: Optional[str] = None,
+        log_dir: str = None,
+        env_id: int = 0,
     ) -> None:
         """
         Initialize the Rayleigh-Benard environment with the given configuration Dictionary.
@@ -76,8 +80,24 @@ class RayleighBenardConvection3DEnv(gym.Env):
         self.heater_limit = heater_limit
         self.heater_duration = heater_duration
 
-        # Print environment configuration
+        # set up a file logger for the environment
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s") # formatter for logging
+        if log_dir is not None:
+            # file_handler for logging
+            file_handler = logging.FileHandler(join(log_dir, f"env_{env_id}.log"))
+            file_handler.setLevel(logging.INFO)
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+        # console handler for logging
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+
+        self.logger.propagate = False  # prevent double logging
+        
         self.logger.info(f"Using Rayleigh number Ra={self.ra}")
         self.logger.info(f"Using episode length {self.episode_length} timesteps")
 
@@ -174,33 +194,41 @@ class RayleighBenardConvection3DEnv(gym.Env):
         return self.__get_obs(), self.__get_info()
 
     def step(self, action: Any = None) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
-        terminated = False  # is always false; no terminal state
-        truncated = False
-        # zero action if none
-        if action is None:
-            action = np.zeros(self.action_space.shape, dtype=np.float32)
-            warnings.warn("No action provided, using zero action")
+        try:
+            terminated = False  # is always false; no terminal state
+            truncated = False
+            # zero action if none
+            if action is None:
+                action = np.zeros(self.action_space.shape, dtype=np.float32)
+                warnings.warn("No action provided, using zero action")
 
-        # Simulation Step
-        success = self.sim.step_simulation(np.array(action))
-        if not success:
-            raise RuntimeError("Error in simulation step, probably NaN values")
+            # Simulation Step
+            success = self.sim.step_simulation(np.array(action))
+            if not success:
+                self.logger.error("Simulation step failed, probably NaN values in the simulation.")
+                raise RuntimeError("Error in simulation step, probably NaN values")
 
-        # Get current info
-        self.last_obs = self.__get_obs()
-        self.last_reward = self.__get_reward()
-        self.last_info = self.__get_info()
+            # Get current info
+            self.last_obs = self.__get_obs()
+            self.last_reward = self.__get_reward()
+            self.last_info = self.__get_info()
 
-        # Check for truncation
-        if self.last_info["t"] >= self.episode_length:
-            truncated = True
+            # Check for truncation
+            if self.last_info["t"] >= self.episode_length:
+                # self.logger.info(
+                #     f"Reached simulation time {self.last_info['t']} >= episode length"
+                # )
+                truncated = True
+        except Exception as e:
+            self.logger.error(f"Error during step: {e}")
+            print(traceback.format_exc(), flush=True)
+            raise
 
         return self.last_obs, self.last_reward, terminated, truncated, self.last_info
 
     def __get_obs(self) -> Any:
         obs = np.array(self.sim.get_state(), dtype=np.float32)
         obs = obs.transpose(0, 3, 2, 1)  # julia uses column-major order
-        obs = np.flip(obs, axis=2)
         return obs
 
     def __get_reward(self) -> float:
@@ -244,6 +272,7 @@ class RayleighBenardConvection3DEnv(gym.Env):
 
         # Temperature is channel 0
         T = self.__get_obs()[RBC3DField.T]
+        T = np.flip(T, axis=1)
 
         # get min max value
         cmin = self.temperature_difference[0]
@@ -288,14 +317,6 @@ class RayleighBenardConvection3DEnv(gym.Env):
             self._plotter = None
             return im[:, :, :3]
 
-    def close(self):
-        if self.closed:
-            return
-        self.closed = True
-
-        if self._plotter is not None:
-            self._plotter.close()
-
 
     def close(self):
         if self.closed:
@@ -305,12 +326,9 @@ class RayleighBenardConvection3DEnv(gym.Env):
         # ✅ Shut down the Julia simulation
         try:
             self.sim.shutdown_simulation()
-            self.logger.info("✅ Julia simulation shut down successfully.")
-
             self.sim.GC.gc()
-            self.logger.info("✅ Forced Julia GC from Python side.")
         except Exception as e:
-            self.logger.warning(f"Could not shut down Julia simulation cleanly: {e}")
+            self.logger.info(f"Could not shut down Julia simulation cleanly: {e}")
 
         # ✅ Shut down the PyVista plotter
         if self._plotter is not None:
